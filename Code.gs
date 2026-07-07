@@ -1,6 +1,7 @@
 var SHEET_NAME = "DATA_WAJIB_PAJAK";
 var PRODUCTION_SHEET_NAME = "BUKU_PRODUKSI";
 var LETTER_SEQUENCE = ["SPOS", "NPP", "NTP"];
+var PRODUCTION_MATCH_WINDOW_DAYS = 7;
 var JASA_RAHARJA_RODA_4 = 143000;
 var DENDA_RODA_4_PER_3_BULAN = 35000;
 
@@ -35,7 +36,8 @@ var PRODUCTION_HEADERS = [
   "taxBaseAmount",
   "jasaRaharja",
   "latePenalty",
-  "calculatedTaxPotential"
+  "calculatedTaxPotential",
+  "recordedDate"
 ];
 
 function doGet(e) {
@@ -285,9 +287,10 @@ function upgradeTaxpayerLettersFromProduction_(productionRecords) {
 
     var existing = targetByPlate[plateKey] || {};
     targetByPlate[plateKey] = {
-      letterType: productionRecord.isPaid ? (existing.letterType || "") : getHigherLetterType_(existing.letterType, productionRecord.letterType),
+      letterType: getHigherLetterType_(existing.letterType, productionRecord.letterType),
       taxValidDate: productionRecord.taxValidDate || existing.taxValidDate || "",
       ownerName: productionRecord.ownerName || existing.ownerName || "",
+      recordedDate: productionRecord.recordedDate || existing.recordedDate || "",
       paymentStatus: productionRecord.isPaid ? "Sudah bayar" : "Belum bayar",
       calculatedTaxPotential: Number(productionRecord.calculatedTaxPotential || existing.calculatedTaxPotential || 0)
     };
@@ -310,6 +313,7 @@ function upgradeTaxpayerLettersFromProduction_(productionRecords) {
     var plateKey = getPlateKey_(record.plateNumber);
     var target = targetByPlate[plateKey];
     if (!target) return;
+    if (!isProductionRecordNearTaxpayer_(target, record)) return;
 
     var nextLetter = getHigherLetterType_(record.letterType, target.letterType);
     var isChanged = false;
@@ -483,6 +487,11 @@ function extractLastDate_(value) {
   return matches.length ? matches[matches.length - 1] : "";
 }
 
+function extractFirstDate_(value) {
+  var matches = String(value || "").match(/\d{2}\/\d{2}\/\d{4}/g) || [];
+  return matches.length ? matches[0] : "";
+}
+
 function dateTextToIso_(value) {
   var match = String(value || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
   return match ? [match[3], match[2], match[1]].join("-") : "";
@@ -512,10 +521,42 @@ function extractSiappTaxValidDateFromSourceText_(value) {
   return dateTextToIso_(extractLastDate_(parts[3] || "") || extractLastDate_(value));
 }
 
+function extractSiappRecordedDateFromSourceText_(value) {
+  var parts = String(value || "").split("|").map(function (part) {
+    return String(part || "").trim();
+  });
+  return dateTextToIso_(extractFirstDate_(parts[5] || "") || extractFirstDate_(value));
+}
+
 function parseIsoDate_(value) {
   var match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
   return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
+function getIsoDatePart_(value) {
+  var match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/);
+  if (match) return match[1];
+  var now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function getDateDistance_(firstIso, secondIso) {
+  var firstDate = parseIsoDate_(firstIso);
+  var secondDate = parseIsoDate_(secondIso);
+  if (!firstDate || !secondDate) return 999999;
+  return Math.abs(Math.round((secondDate.getTime() - firstDate.getTime()) / 86400000));
+}
+
+function isProductionRecordNearTaxpayer_(productionRecord, taxpayerRecord) {
+  var recordedDate = String(productionRecord.recordedDate || "") || extractSiappRecordedDateFromSourceText_(productionRecord.sourceText || "");
+  if (!recordedDate) return false;
+  var referenceDate = getIsoDatePart_(taxpayerRecord.updatedAt);
+  return getDateDistance_(referenceDate, recordedDate) <= PRODUCTION_MATCH_WINDOW_DAYS;
 }
 
 function getLateMonthCount_(taxValidDate) {
@@ -548,6 +589,7 @@ function normalizeProductionRecord_(record, scope) {
   var isPaid = parseBoolean_(record.isPaid) || String(record.status || "").toUpperCase() === "LUNAS";
   var taxBaseAmount = Number(String(record.taxBaseAmount || "0").replace(/\D/g, "")) || extractSiappTaxBaseFromSourceText_(record.sourceText || "");
   var taxValidDate = String(record.taxValidDate || "") || extractSiappTaxValidDateFromSourceText_(record.sourceText || "");
+  var recordedDate = String(record.recordedDate || "") || extractSiappRecordedDateFromSourceText_(record.sourceText || "");
   var latePenalty = Number(String(record.latePenalty || "0").replace(/\D/g, "")) || (taxBaseAmount ? calculateLatePenalty_(taxValidDate) : 0);
   var jasaRaharja = Number(String(record.jasaRaharja || "0").replace(/\D/g, "")) || (taxBaseAmount ? JASA_RAHARJA_RODA_4 : 0);
   var calculatedTaxPotential = Number(String(record.calculatedTaxPotential || "0").replace(/\D/g, "")) || (taxBaseAmount ? taxBaseAmount + jasaRaharja + latePenalty : 0);
@@ -570,7 +612,8 @@ function normalizeProductionRecord_(record, scope) {
     taxBaseAmount: taxBaseAmount,
     jasaRaharja: jasaRaharja,
     latePenalty: latePenalty,
-    calculatedTaxPotential: calculatedTaxPotential
+    calculatedTaxPotential: calculatedTaxPotential,
+    recordedDate: recordedDate
   };
 }
 

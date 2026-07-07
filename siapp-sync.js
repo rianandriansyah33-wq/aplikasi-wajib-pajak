@@ -259,6 +259,11 @@
     return [match[3], match[2], match[1]].join("-");
   }
 
+  function extractFirstDate(value) {
+    const matches = String(value || "").match(/\d{2}\/\d{2}\/\d{4}/g) || [];
+    return matches.length ? matches[0] : "";
+  }
+
   function extractLastDate(value) {
     const matches = String(value || "").match(/\d{2}\/\d{2}\/\d{4}/g) || [];
     return matches.length ? matches[matches.length - 1] : "";
@@ -343,6 +348,7 @@
       const entryMatch = String(cells[1] || "").match(/\d{6,}/);
       const taxBaseAmount = extractTaxBaseAmount(cells);
       const taxValidDate = extractTaxValidDate(cells);
+      const recordedDate = toIsoDate(extractFirstDate(cells[5] || ""));
       const latePenalty = calculateLatePenalty(taxValidDate);
       const calculatedTaxPotential = calculateTaxPotential(taxBaseAmount, taxValidDate);
 
@@ -358,6 +364,7 @@
         status: payment.status,
         isPaid: payment.isPaid,
         paidDate: payment.paidDate,
+        recordedDate: recordedDate,
         taxValidDate: taxValidDate,
         taxBaseAmount: taxBaseAmount,
         jasaRaharja: taxBaseAmount ? jasaRaharjaRoda4 : 0,

@@ -6,6 +6,8 @@ const REMOTE_EMPTY_AFTER_WRITE_GUARD_MS = 15000;
 const JASA_RAHARJA_RODA_4 = 143000;
 const DENDA_RODA_4_PER_3_BULAN = 35000;
 const LETTER_SEQUENCE = ["SPOS", "NPP", "NTP"];
+const LETTER_MATCH_PRIORITY = ["NTP", "NPP", "SPOS"];
+const PRODUCTION_MATCH_WINDOW_DAYS = 7;
 const LETTER_OFFSETS = {
   SPOS: 15,
   NPP: 30,
@@ -565,6 +567,11 @@ function extractLastDate(value) {
   return matches.length ? matches[matches.length - 1] : "";
 }
 
+function extractFirstDateFromText(value) {
+  const matches = String(value || "").match(/\d{2}\/\d{2}\/\d{4}/g) || [];
+  return matches.length ? matches[0] : "";
+}
+
 function extractSiappTaxBaseFromSourceText(value) {
   const parts = String(value || "").split("|").map(function (part) {
     return part.trim();
@@ -587,6 +594,13 @@ function extractSiappTaxValidDateFromSourceText(value) {
     return part.trim();
   });
   return toIsoDate(extractLastDate(parts[3] || "") || extractLastDate(value));
+}
+
+function extractSiappRecordedDateFromSourceText(value) {
+  const parts = String(value || "").split("|").map(function (part) {
+    return part.trim();
+  });
+  return toIsoDate(extractFirstDateFromText(parts[5] || "") || extractFirstDateFromText(value));
 }
 
 function parseIsoDate(value) {
@@ -766,6 +780,7 @@ function normalizeProductionRecord(record) {
   const letterType = coerceLetterType(record) || "SPOS";
   const taxBaseAmount = getNominalNumber(record.taxBaseAmount || record.siappBaseAmount || record.baseAmount || 0) || extractSiappTaxBaseFromSourceText(record.sourceText || "");
   const taxValidDate = toIsoDate(record.taxValidDate || "") || extractSiappTaxValidDateFromSourceText(record.sourceText || "");
+  const recordedDate = toIsoDate(record.recordedDate || "") || extractSiappRecordedDateFromSourceText(record.sourceText || "");
   const latePenalty = taxBaseAmount ? calculateLatePenalty(taxValidDate) : 0;
   const calculatedTaxPotential = getNominalNumber(record.calculatedTaxPotential || record.taxPotential || 0) || calculateTaxPotentialFromSiapp(taxBaseAmount, taxValidDate);
   return {
@@ -780,6 +795,7 @@ function normalizeProductionRecord(record) {
     status: String(record.status || "Belum terdeteksi lunas"),
     isPaid: Boolean(record.isPaid === true || record.isPaid === "true" || record.status === "Lunas"),
     paidDate: String(record.paidDate || ""),
+    recordedDate: recordedDate,
     taxValidDate: taxValidDate,
     taxBaseAmount: taxBaseAmount,
     jasaRaharja: taxBaseAmount ? JASA_RAHARJA_RODA_4 : 0,
@@ -842,16 +858,74 @@ function parseProductionPaste(text, scope) {
   });
 }
 
+function getProductionReferenceDate(value) {
+  if (value && typeof value === "object" && value.updatedAt) {
+    const datePart = String(value.updatedAt).slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart;
+  }
+  return todayIso();
+}
+
+function getProductionRecordedDate(record) {
+  return toIsoDate(record && record.recordedDate) || extractSiappRecordedDateFromSourceText(record && record.sourceText);
+}
+
+function hasProductionPlate(value) {
+  const plateKey = getPlateKey(value);
+  if (!plateKey) return false;
+  return productionRecords.some(function (record) {
+    return record.plateKey === plateKey;
+  });
+}
+
+function getRecordedDateDistance(record, referenceDate) {
+  const recordedDate = getProductionRecordedDate(record);
+  if (!recordedDate) return Infinity;
+  const distance = daysBetween(referenceDate, recordedDate);
+  return distance === null ? Infinity : Math.abs(distance);
+}
+
+function sortProductionCandidates(first, second, referenceDate) {
+  const firstDistance = getRecordedDateDistance(first, referenceDate);
+  const secondDistance = getRecordedDateDistance(second, referenceDate);
+  if (firstDistance !== secondDistance) return firstDistance - secondDistance;
+  return String(second.updatedAt || "").localeCompare(String(first.updatedAt || ""));
+}
+
+function isProductionRecordNearReference(productionRecord, referenceValue) {
+  return getRecordedDateDistance(productionRecord, getProductionReferenceDate(referenceValue)) <= PRODUCTION_MATCH_WINDOW_DAYS;
+}
+
 function getProductionMatch(value) {
   const plateKey = typeof value === "string" ? getPlateKey(value) : getPlateKey(value && value.plateNumber);
   if (!plateKey) return null;
-  return productionRecords
+  const referenceDate = getProductionReferenceDate(value);
+  const candidates = productionRecords
     .filter(function (record) {
       return record.plateKey === plateKey;
-    })
-    .sort(function (a, b) {
-      return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
-    })[0] || null;
+    });
+
+  for (let priorityIndex = 0; priorityIndex < LETTER_MATCH_PRIORITY.length; priorityIndex += 1) {
+    const letterType = LETTER_MATCH_PRIORITY[priorityIndex];
+    const closeMatches = candidates
+      .filter(function (record) {
+        return record.letterType === letterType && getRecordedDateDistance(record, referenceDate) <= PRODUCTION_MATCH_WINDOW_DAYS;
+      })
+      .sort(function (first, second) {
+        return sortProductionCandidates(first, second, referenceDate);
+      });
+
+    if (closeMatches.length) return closeMatches[0];
+  }
+
+  const hasRecordedDate = candidates.some(function (record) {
+    return getProductionRecordedDate(record);
+  });
+  if (hasRecordedDate) return null;
+
+  return candidates.sort(function (a, b) {
+    return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+  })[0] || null;
 }
 
 function isRecordPaid(record) {
@@ -913,7 +987,9 @@ function updateProductionCheckPreview() {
 
   const match = getProductionMatch(plateNumber);
   if (!match) {
-    controls.productionCheckResult.textContent = "Nopol belum ada di SIAPP";
+    controls.productionCheckResult.textContent = hasProductionPlate(plateNumber)
+      ? "Ada di SIAPP, tanggal rekam tidak dekat"
+      : "Nopol belum ada di SIAPP";
     controls.productionCheckResult.classList.add("is-neutral");
     return;
   }
@@ -999,9 +1075,9 @@ function applyProductionLetterUpdates(sourceRecords) {
     if (!productionRecord) return;
     const existingRecord = findExistingRecordByPlate(productionRecord.plateNumber, "");
     if (!existingRecord) return;
+    if (!isProductionRecordNearReference(productionRecord, existingRecord)) return;
 
-    const canUpgradeLetter = !productionRecord.isPaid && !isRecordPaid(existingRecord);
-    const nextLetterType = canUpgradeLetter ? getHigherLetterType(existingRecord.letterType, productionRecord.letterType) : "";
+    const nextLetterType = getHigherLetterType(existingRecord.letterType, productionRecord.letterType);
     const breakdown = getProductionTaxBreakdown(productionRecord);
     let isChanged = false;
 
@@ -1881,7 +1957,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260707-2115";
+    const helperSrc = "siapp-helper.html?v=20260707-2145";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }
