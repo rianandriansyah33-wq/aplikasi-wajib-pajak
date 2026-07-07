@@ -973,7 +973,7 @@ textarea:focus {
 .siapp-overlay {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 60;
   display: grid;
   place-items: center;
   padding: 18px;
@@ -1000,6 +1000,25 @@ textarea:focus {
   box-shadow: 0 26px 72px rgba(15, 23, 42, 0.24);
 }
 
+.siapp-overlay {
+  place-items: stretch;
+  padding: 0;
+  background: #fff;
+}
+
+.siapp-panel {
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .detail-top {
   position: sticky;
   top: 0;
@@ -1021,14 +1040,14 @@ textarea:focus {
 }
 
 .siapp-panel {
-  width: min(900px, 100%);
+  width: 100%;
 }
 
 .siapp-frame {
   display: block;
   width: 100%;
-  height: min(680px, calc(100vh - 150px));
-  min-height: 520px;
+  height: 100%;
+  min-height: 0;
   border: 0;
   background: #fff;
 }
@@ -1484,18 +1503,19 @@ tbody tr:last-child td {
 
 .helper-page {
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .helper-shell {
-  width: min(880px, calc(100% - 32px));
+  width: min(980px, calc(100% - 24px));
   margin: 0 auto;
-  padding: 42px 0;
+  padding: 20px 0;
 }
 
 .helper-panel {
   display: grid;
-  gap: 18px;
-  padding: 24px;
+  gap: 14px;
+  padding: 20px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -1503,7 +1523,7 @@ tbody tr:last-child td {
 }
 
 .helper-panel h1 {
-  font-size: 32px;
+  font-size: 28px;
 }
 
 .helper-subtitle {
@@ -1667,15 +1687,24 @@ tbody tr:last-child td {
     min-height: 188px;
   }
 
-  .detail-overlay,
-  .siapp-overlay {
+  .detail-overlay {
     align-items: end;
     padding: 10px;
   }
 
-  .detail-panel,
-  .siapp-panel {
+  .siapp-overlay {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .detail-panel {
     max-height: calc(100vh - 20px);
+  }
+
+  .siapp-panel {
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
   }
 
   .detail-summary,
@@ -1686,8 +1715,8 @@ tbody tr:last-child td {
   }
 
   .siapp-frame {
-    min-height: 560px;
-    height: calc(100vh - 130px);
+    min-height: 0;
+    height: 100%;
   }
 
   .primary-button,
@@ -1968,34 +1997,40 @@ input[type="range"]:focus {
   .topbar {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
+    align-items: center;
     position: sticky;
     top: 0;
     z-index: 30;
-    gap: 10px;
-    margin: -8px -8px 14px;
-    padding: 10px;
+    gap: 8px;
+    min-height: 52px;
+    margin: -10px -10px 10px;
+    padding: 7px 8px;
     border: 1px solid rgba(221, 229, 238, 0.92);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
-    backdrop-filter: blur(14px);
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1);
+    backdrop-filter: blur(12px);
+  }
+
+  .topbar .brand-block {
+    align-items: center;
+    gap: 8px;
   }
 
   .topbar h1 {
-    font-size: 19px;
-    line-height: 1.15;
+    font-size: 15px;
+    line-height: 1.12;
   }
 
   .topbar .eyebrow {
-    margin-bottom: 3px;
-    font-size: 10px;
+    display: none;
   }
 
   .topbar .sync-status {
-    min-height: 21px;
-    margin-top: 6px;
-    font-size: 10px;
+    min-height: 18px;
+    margin-top: 4px;
+    padding: 0 7px;
+    font-size: 9px;
   }
 
   .top-actions {
@@ -2010,8 +2045,9 @@ input[type="range"]:focus {
 
   .mobile-menu-button {
     width: auto;
-    min-height: 40px;
-    padding: 0 12px;
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 10px;
     border-color: #cfe1df;
     background: var(--primary);
     color: #fff;

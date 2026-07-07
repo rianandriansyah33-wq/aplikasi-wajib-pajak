@@ -38,6 +38,7 @@ const controls = {
   statusFilter: document.querySelector("#statusFilter"),
   dateFilter: document.querySelector("#dateFilter"),
   clearAllBtn: document.querySelector("#clearAllBtn"),
+  homeBtn: document.querySelector("#homeBtn"),
   exportJsonBtn: document.querySelector("#exportJsonBtn"),
   exportCsvBtn: document.querySelector("#exportCsvBtn"),
   importFile: document.querySelector("#importFile"),
@@ -52,6 +53,7 @@ const controls = {
   dashboardSection: document.querySelector("#dashboardSection"),
   mobileMenuBtn: document.querySelector("#mobileMenuBtn"),
   mobileMenuPanel: document.querySelector("#mobileMenuPanel"),
+  mobileHomeBtn: document.querySelector("#mobileHomeBtn"),
   mobileDashboardBtn: document.querySelector("#mobileDashboardBtn"),
   mobileExportJsonBtn: document.querySelector("#mobileExportJsonBtn"),
   mobileExportCsvBtn: document.querySelector("#mobileExportCsvBtn"),
@@ -1830,6 +1832,15 @@ function closeSiappModal() {
   document.body.classList.remove("modal-open");
 }
 
+function goHome() {
+  closeMobileMenu();
+  closeSiappModal();
+  closeRecordDetail();
+  if (controls.dashboardSection) controls.dashboardSection.classList.remove("is-open");
+  if (controls.mobileDashboardBtn) controls.mobileDashboardBtn.setAttribute("aria-expanded", "false");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function setInputFormCollapsed(isCollapsed) {
   form.classList.toggle("is-collapsed", isCollapsed);
   if (!controls.toggleFormBtn) return;
@@ -1942,6 +1953,14 @@ if (controls.mobileMenuPanel) {
 
 if (controls.mobileDashboardBtn) {
   controls.mobileDashboardBtn.addEventListener("click", toggleMobileDashboard);
+}
+
+if (controls.homeBtn) {
+  controls.homeBtn.addEventListener("click", goHome);
+}
+
+if (controls.mobileHomeBtn) {
+  controls.mobileHomeBtn.addEventListener("click", goHome);
 }
 
 if (controls.siappHelperLink) {
