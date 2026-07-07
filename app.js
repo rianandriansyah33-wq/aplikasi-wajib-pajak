@@ -1818,8 +1818,11 @@ function toggleMobileDashboard() {
 
 function openSiappModal() {
   if (!controls.siappOverlay) return;
-  if (controls.siappFrame && controls.siappFrame.getAttribute("src") === "about:blank") {
-    controls.siappFrame.src = "siapp-helper.html";
+  if (controls.siappFrame) {
+    const helperSrc = "siapp-helper.html?v=20260707-1905";
+    if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
+      controls.siappFrame.src = helperSrc;
+    }
   }
   controls.siappOverlay.hidden = false;
   document.body.classList.add("modal-open");
