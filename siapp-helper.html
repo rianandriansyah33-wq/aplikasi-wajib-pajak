@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sinkron SIAPP</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="helper-page">
+    <main class="helper-shell">
+      <section class="helper-panel">
+        <p class="eyebrow">Integrasi SIAPP</p>
+        <h1>Sinkron Buku Produksi</h1>
+        <p class="helper-subtitle">Pasang tombol ini sebagai bookmark, lalu klik saat Buku Produksi SIAPP sedang terbuka. Pakai Sinkron Cepat untuk menu, bulan, dan tahun yang sedang dibuka. Pantau Otomatis akan mengulang sinkron cepat tiap 1 menit selama tab SIAPP tetap terbuka.</p>
+
+        <div class="helper-actions">
+          <a class="primary-button bookmarklet-link" id="bookmarkletLink" href="#">Sinkron Cepat</a>
+          <a class="secondary-button bookmarklet-link" id="watchBookmarkletLink" href="#">Pantau Otomatis</a>
+          <a class="secondary-button bookmarklet-link" id="fullBookmarkletLink" href="#">Sinkron Lengkap</a>
+          <button class="secondary-button" id="copyBookmarkletBtn" type="button">Copy Cepat</button>
+          <a class="ghost-button" href="index.html">Kembali</a>
+        </div>
+
+        <div class="helper-steps">
+          <div>
+            <span>1</span>
+            <strong>Tarik tombol Sinkron SIAPP ke bookmark bar Chrome.</strong>
+          </div>
+          <div>
+            <span>2</span>
+            <strong>Buka SIAPP, login, lalu tampilkan Buku Produksi.</strong>
+          </div>
+          <div>
+            <span>3</span>
+            <strong>Klik Pantau Otomatis kalau ingin data SIAPP dicek berkala tanpa refresh aplikasi.</strong>
+          </div>
+        </div>
+
+        <p class="helper-status" id="helperStatus"></p>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="config.js"></script>
+    <script src="siapp-helper.js"></script>
+  </body>
+</html>
