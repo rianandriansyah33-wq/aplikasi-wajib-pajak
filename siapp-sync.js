@@ -31,6 +31,38 @@
     return String(value || "").toUpperCase().replace(/\s+/g, " ").trim();
   }
 
+  function cleanOwnerName(value) {
+    const rawText = String(value || "").replace(/<br\s*\/?>/gi, "\n");
+    const firstLine = rawText.split(/\r?\n/)
+      .map(function (line) {
+        return normalizeText(line);
+      })
+      .find(Boolean) || "";
+
+    let ownerName = firstLine
+      .replace(/\s*\|.*$/, "")
+      .replace(/\b(KEC|KEL|DESA|DUSUN|JL|JLN|JALAN|RT|RW|GG|GANG|NO|NOMOR|BLOK|KAV|PERUM|DK|DS)\b.*$/, "")
+      .trim();
+    if (/\d/.test(ownerName)) {
+      ownerName = ownerName.replace(/\b(MULYOREJO|MULYOSARI|MANYAR|SUTOREJO|KALIJUDAN|KALISARI|KENJERAN|KERTAJAYA|DHARMAHUSADA|BABATAN|TEMPUREJO|WISMA|PONDOK|KARANG|DUKUH|RUNGKUT|SUKOLILO|KEPUTIH|KLAMPIS|MENUR|MOJO|AIRLANGGA|SURABAYA|GRESIK|SIDOARJO)\b.*$/, "").trim();
+    }
+    return ownerName
+      .replace(/\b[A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3}\b.*$/, "")
+      .trim();
+  }
+
+  function getCellText(cell) {
+    const clone = cell.cloneNode(true);
+    const ownerDocument = cell.ownerDocument || document;
+    clone.querySelectorAll("br").forEach(function (breakElement) {
+      breakElement.replaceWith(ownerDocument.createTextNode("\n"));
+    });
+    clone.querySelectorAll("div,p").forEach(function (blockElement) {
+      blockElement.appendChild(ownerDocument.createTextNode("\n"));
+    });
+    return clone.textContent || cell.textContent || "";
+  }
+
   function setStatus(message, color) {
     let element = document.getElementById("siapp-sync-status");
     if (!element) {
@@ -299,9 +331,7 @@
     const year = detectYear(root);
 
     rows.forEach(function (row) {
-      const cells = Array.from(row.cells || []).map(function (cell) {
-        return cell.innerText || cell.textContent || "";
-      });
+      const cells = Array.from(row.cells || []).map(getCellText);
       if (cells.length < 2) return;
 
       const plateNumber = extractPlate(cells[1]) || extractPlate(cells.join(" "));
@@ -309,7 +339,7 @@
       if (!plateNumber || !plateKey) return;
 
       const payment = getPaidInfo(cells);
-      const ownerLines = String(cells[2] || "").split(/\r?\n/).map(normalizeText).filter(Boolean);
+      const ownerName = cleanOwnerName(cells[2] || "");
       const entryMatch = String(cells[1] || "").match(/\d{6,}/);
       const taxBaseAmount = extractTaxBaseAmount(cells);
       const taxValidDate = extractTaxValidDate(cells);
@@ -323,7 +353,7 @@
         year: year,
         plateNumber: plateNumber,
         plateKey: plateKey,
-        ownerName: ownerLines[0] || "",
+        ownerName: ownerName,
         entryNumber: entryMatch ? entryMatch[0] : "",
         status: payment.status,
         isPaid: payment.isPaid,

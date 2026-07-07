@@ -425,12 +425,37 @@ function normalizeRecord_(record) {
     taxValidDate: String(record.taxValidDate || ""),
     stnkValidDate: String(record.stnkValidDate || ""),
     plateNumber: String(record.plateNumber || ""),
-    ownerName: String(record.ownerName || ""),
+    ownerName: cleanOwnerName_(record.ownerName),
     taxPotential: Number(record.taxPotential || 0),
     phone: String(record.phone || ""),
     status: String(record.status || "Belum bayar"),
     updatedAt: String(record.updatedAt || new Date().toISOString())
   };
+}
+
+function cleanOwnerName_(value) {
+  var rawText = String(value || "").replace(/<br\s*\/?>/gi, "\n");
+  var lines = rawText.split(/\r?\n/);
+  var firstLine = "";
+
+  for (var index = 0; index < lines.length; index += 1) {
+    var candidate = String(lines[index] || "").toUpperCase().replace(/\s+/g, " ").trim();
+    if (candidate) {
+      firstLine = candidate;
+      break;
+    }
+  }
+
+  var ownerName = firstLine
+    .replace(/\s*\|.*$/, "")
+    .replace(/\b(KEC|KEL|DESA|DUSUN|JL|JLN|JALAN|RT|RW|GG|GANG|NO|NOMOR|BLOK|KAV|PERUM|DK|DS)\b.*$/, "")
+    .trim();
+  if (/\d/.test(ownerName)) {
+    ownerName = ownerName.replace(/\b(MULYOREJO|MULYOSARI|MANYAR|SUTOREJO|KALIJUDAN|KALISARI|KENJERAN|KERTAJAYA|DHARMAHUSADA|BABATAN|TEMPUREJO|WISMA|PONDOK|KARANG|DUKUH|RUNGKUT|SUKOLILO|KEPUTIH|KLAMPIS|MENUR|MOJO|AIRLANGGA|SURABAYA|GRESIK|SIDOARJO)\b.*$/, "").trim();
+  }
+  return ownerName
+    .replace(/\b[A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3}\b.*$/, "")
+    .trim();
 }
 
 function normalizeProductionScope_(scope) {
@@ -522,7 +547,7 @@ function normalizeProductionRecord_(record, scope) {
     year: year,
     plateNumber: plateNumber,
     plateKey: plateKey,
-    ownerName: String(record.ownerName || "").toUpperCase(),
+    ownerName: cleanOwnerName_(record.ownerName),
     entryNumber: String(record.entryNumber || ""),
     status: String(record.status || (isPaid ? "Lunas" : "Belum terdeteksi lunas")),
     isPaid: isPaid,

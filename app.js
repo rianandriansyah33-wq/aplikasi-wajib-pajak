@@ -653,6 +653,26 @@ function normalizeUpperText(value) {
   return formatUpperText(value).trim();
 }
 
+function cleanOwnerName(value) {
+  const rawText = String(value || "").replace(/<br\s*\/?>/gi, "\n");
+  const firstLine = rawText.split(/\r?\n/)
+    .map(function (line) {
+      return normalizeUpperText(line).replace(/\s+/g, " ").trim();
+    })
+    .find(Boolean) || "";
+
+  let ownerName = firstLine
+    .replace(/\s*\|.*$/, "")
+    .replace(/\b(KEC|KEL|DESA|DUSUN|JL|JLN|JALAN|RT|RW|GG|GANG|NO|NOMOR|BLOK|KAV|PERUM|DK|DS)\b.*$/, "")
+    .trim();
+  if (/\d/.test(ownerName)) {
+    ownerName = ownerName.replace(/\b(MULYOREJO|MULYOSARI|MANYAR|SUTOREJO|KALIJUDAN|KALISARI|KENJERAN|KERTAJAYA|DHARMAHUSADA|BABATAN|TEMPUREJO|WISMA|PONDOK|KARANG|DUKUH|RUNGKUT|SUKOLILO|KEPUTIH|KLAMPIS|MENUR|MOJO|AIRLANGGA|SURABAYA|GRESIK|SIDOARJO)\b.*$/, "").trim();
+  }
+  return ownerName
+    .replace(/\b[A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3}\b.*$/, "")
+    .trim();
+}
+
 function formatUpperTextField(event) {
   const input = event.target;
   const start = input.selectionStart;
@@ -755,7 +775,7 @@ function normalizeProductionRecord(record) {
     year: year,
     plateNumber: plateNumber,
     plateKey: plateKey,
-    ownerName: normalizeUpperText(record.ownerName || ""),
+    ownerName: cleanOwnerName(record.ownerName || ""),
     entryNumber: String(record.entryNumber || ""),
     status: String(record.status || "Belum terdeteksi lunas"),
     isPaid: Boolean(record.isPaid === true || record.isPaid === "true" || record.status === "Lunas"),
@@ -836,14 +856,28 @@ function getProductionMatch(value) {
 
 function isRecordPaid(record) {
   const match = getProductionMatch(record);
-  return record.status === "Sudah bayar" || Boolean(match && match.isPaid);
+  if (match) return Boolean(match.isPaid);
+  if (productionRecords.length) return false;
+  return record.status === "Sudah bayar";
 }
 
 function describeProductionMatch(recordOrPlate) {
   const match = getProductionMatch(recordOrPlate);
-  if (!match) return "Tidak ditemukan di SIAPP";
-  if (match.isPaid) return "Lunas di SIAPP" + (match.paidDate ? " - " + match.paidDate : "");
-  return "Ada di SIAPP, belum terdeteksi lunas";
+  if (!match) return "Belum tersinkron SIAPP";
+  if (match.isPaid) return "Lunas SIAPP" + (match.paidDate ? " - " + match.paidDate : "");
+  return "Belum lunas SIAPP";
+}
+
+function getSiappPaymentFilterState(record) {
+  const match = getProductionMatch(record);
+  if (!match) return "siappMissing";
+  return match.isPaid ? "siappPaid" : "siappUnpaid";
+}
+
+function getAutoPaymentStatus(recordOrPlate, fallbackStatus) {
+  const match = getProductionMatch(recordOrPlate);
+  if (match) return match.isPaid ? "Sudah bayar" : "Belum bayar";
+  return fallbackStatus || (recordOrPlate && recordOrPlate.status) || "Belum bayar";
 }
 
 function getProductionPeriodLabel(record) {
@@ -873,24 +907,24 @@ function updateProductionCheckPreview() {
   }
 
   if (!productionRecords.length) {
-    controls.productionCheckResult.textContent = "Data SIAPP belum disinkron";
-    controls.productionCheckResult.classList.add("is-neutral");
+    controls.productionCheckResult.textContent = "";
     return;
   }
 
   const match = getProductionMatch(plateNumber);
   if (!match) {
-    controls.productionCheckResult.textContent = "SIAPP: belum ditemukan";
+    controls.productionCheckResult.textContent = "Nopol belum ada di SIAPP";
     controls.productionCheckResult.classList.add("is-neutral");
     return;
   }
 
-  const breakdown = getProductionTaxBreakdown(match);
-  const nominalText = breakdown.calculatedTaxPotential ? " | Nominal " + formatCurrency(breakdown.calculatedTaxPotential) : "";
-  controls.productionCheckResult.textContent = match.isPaid
-    ? "SIAPP: lunas" + (match.paidDate ? " " + match.paidDate : "") + nominalText
-    : "SIAPP: ada, belum lunas" + nominalText;
-  controls.productionCheckResult.classList.add(match.isPaid ? "is-paid" : "is-unpaid");
+  if (match.isPaid) {
+    controls.productionCheckResult.textContent = "Lunas di SIAPP" + (match.paidDate ? " " + match.paidDate : "");
+    controls.productionCheckResult.classList.add("is-paid");
+    return;
+  }
+
+  controls.productionCheckResult.textContent = "";
 }
 
 function updateSiappAutofillPanel() {
@@ -954,7 +988,7 @@ function mergeDuplicateRecord(existingRecord, incomingRecord) {
     ownerName: incomingRecord.ownerName || existingRecord.ownerName,
     taxPotential: incomingRecord.taxPotential || existingRecord.taxPotential,
     phone: incomingRecord.phone || existingRecord.phone,
-    status: existingRecord.status === "Sudah bayar" ? existingRecord.status : (incomingRecord.status || existingRecord.status),
+    status: getAutoPaymentStatus(incomingRecord.plateNumber || existingRecord.plateNumber, incomingRecord.status || existingRecord.status),
     updatedAt: new Date().toISOString()
   });
 }
@@ -983,6 +1017,12 @@ function applyProductionLetterUpdates(sourceRecords) {
 
     if (breakdown.calculatedTaxPotential && Number(existingRecord.taxPotential || 0) !== breakdown.calculatedTaxPotential) {
       existingRecord.taxPotential = breakdown.calculatedTaxPotential;
+      isChanged = true;
+    }
+
+    const nextPaymentStatus = productionRecord.isPaid ? "Sudah bayar" : "Belum bayar";
+    if (existingRecord.status !== nextPaymentStatus) {
+      existingRecord.status = nextPaymentStatus;
       isChanged = true;
     }
 
@@ -1023,7 +1063,7 @@ function normalizeRecord(record) {
     letterType: coerceLetterType(record),
     taxValidDate: toIsoDate(record.taxValidDate || record.dueDate || ""),
     plateNumber: formatPlate(record.plateNumber || ""),
-    ownerName: normalizeUpperText(record.ownerName),
+    ownerName: cleanOwnerName(record.ownerName),
     taxPotential: getNominalNumber(record.taxPotential || record.nominal || 0),
     phone: normalizeWhatsapp(record.phone),
     status: record.status || "Belum bayar",
@@ -1040,7 +1080,7 @@ function readForm() {
     ownerName: fields.ownerName ? fields.ownerName.value : "",
     taxPotential: fields.taxPotential ? getNominalNumber(fields.taxPotential.value) : 0,
     phone: fields.phone.value,
-    status: fields.status.value || "Belum bayar",
+    status: getAutoPaymentStatus(fields.plateNumber.value, fields.status.value || "Belum bayar"),
     updatedAt: new Date().toISOString()
   });
 }
@@ -1094,8 +1134,7 @@ function getFilteredRecords() {
       const haystack = [record.ownerName, record.plateNumber, record.letterType, record.phone].join(" ").toLowerCase();
 
       if (query && !haystack.includes(query)) return false;
-      if (status === "Belum bayar" && isRecordPaid(record)) return false;
-      if (status === "Sudah bayar" && !isRecordPaid(record)) return false;
+      if (status !== "all" && getSiappPaymentFilterState(record) !== status) return false;
       if (!matchesFollowUpCategory(record, followUpCategory)) return false;
       return true;
     })
@@ -1314,23 +1353,43 @@ function createDetailItem(label, content) {
   return item;
 }
 
-function createDetailStatusSelect(record) {
-  const statusSelect = document.createElement("select");
-  statusSelect.className = "status-select " + (record.status === "Sudah bayar" ? "status-select-paid" : "status-select-unpaid");
-  statusSelect.setAttribute("aria-label", "Ubah status bayar");
+function getSiappStatusInfo(record) {
+  const match = getProductionMatch(record);
+  if (!match) {
+    return {
+      label: "Belum tersinkron",
+      detail: "Belum ada data SIAPP",
+      className: "is-neutral"
+    };
+  }
 
-  ["Belum bayar", "Sudah bayar"].forEach(function (status) {
-    const option = document.createElement("option");
-    option.textContent = status;
-    statusSelect.append(option);
-  });
+  if (match.isPaid) {
+    return {
+      label: "Sudah lunas",
+      detail: match.paidDate ? "Tgl bayar " + match.paidDate : "Tersinkron SIAPP",
+      className: "is-paid"
+    };
+  }
 
-  statusSelect.value = record.status;
-  statusSelect.addEventListener("change", function () {
-    closeRecordDetail();
-    updateStatus(record.id, statusSelect.value);
-  });
-  return statusSelect;
+  return {
+    label: "Belum lunas",
+    detail: "Tersinkron SIAPP",
+    className: "is-unpaid"
+  };
+}
+
+function createSiappStatusDisplay(record) {
+  const info = getSiappStatusInfo(record);
+  const wrapper = document.createElement("span");
+  wrapper.className = "siapp-status-chip " + info.className;
+
+  const label = document.createElement("strong");
+  label.textContent = info.label;
+  const detail = document.createElement("small");
+  detail.textContent = info.detail;
+
+  wrapper.append(label, detail);
+  return wrapper;
 }
 
 function renderRecordDetail(record) {
@@ -1375,8 +1434,7 @@ function renderRecordDetail(record) {
     createDetailItem("Nama Wajib Pajak", record.ownerName || "Belum diisi"),
     createDetailItem("No Whatsapp", record.phone || "Belum diisi"),
     createDetailItem("Masa Pajak", formatDate(record.taxValidDate) + " - " + taxInfo.text),
-    createDetailItem("SIAPP", describeProductionMatch(record)),
-    createDetailItem("Status", createDetailStatusSelect(record))
+    createDetailItem("Status Bayar SIAPP", createSiappStatusDisplay(record))
   );
 
   const followUpSection = document.createElement("div");
@@ -1528,13 +1586,9 @@ function render() {
     const productionMatch = getProductionMatch(record);
 
     if (productionElement) {
-      if (productionMatch) {
-        productionElement.hidden = false;
-        productionElement.textContent = productionMatch.isPaid ? "SIAPP: Lunas" : "SIAPP: Belum lunas";
-        productionElement.classList.add(productionMatch.isPaid ? "is-paid" : "is-unpaid");
-      } else {
-        productionElement.hidden = true;
-      }
+      productionElement.hidden = true;
+      productionElement.textContent = "";
+      productionElement.classList.remove("is-paid", "is-unpaid");
     }
 
     const siappButton = card.querySelector(".siapp-check-btn");
@@ -1822,7 +1876,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260707-1920";
+    const helperSrc = "siapp-helper.html?v=20260707-2030";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }

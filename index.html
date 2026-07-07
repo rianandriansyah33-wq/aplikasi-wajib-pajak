@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Follow-up Wajib Pajak Kendaraan</title>
-    <link rel="icon" href="favicon.svg?v=20260707-1920" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=20260707-1920" />
+    <link rel="icon" href="favicon.svg?v=20260707-2030" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css?v=20260707-2030" />
   </head>
   <body>
     <div class="app-shell">
@@ -206,11 +206,12 @@
                 <input id="searchInput" type="search" placeholder="Nama, nopol, jenis surat, WhatsApp" />
               </label>
               <label>
-                <span>Status</span>
+                <span>Status SIAPP</span>
                 <select id="statusFilter">
-                  <option value="all">Semua status</option>
-                  <option>Belum bayar</option>
-                  <option>Sudah bayar</option>
+                  <option value="all">Semua pembayaran</option>
+                  <option value="siappUnpaid">Belum lunas SIAPP</option>
+                  <option value="siappPaid">Sudah lunas SIAPP</option>
+                  <option value="siappMissing">Belum tersinkron SIAPP</option>
                 </select>
               </label>
               <label>
@@ -307,6 +308,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="config.js"></script>
-    <script src="app.js?v=20260707-1920"></script>
+    <script src="app.js?v=20260707-2030"></script>
   </body>
 </html>
