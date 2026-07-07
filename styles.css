@@ -1688,8 +1688,8 @@ tbody tr:last-child td {
   }
 
   .detail-overlay {
-    align-items: end;
-    padding: 10px;
+    align-items: stretch;
+    padding: max(8px, env(safe-area-inset-top)) 8px 8px;
   }
 
   .siapp-overlay {
@@ -1698,7 +1698,12 @@ tbody tr:last-child td {
   }
 
   .detail-panel {
-    max-height: calc(100vh - 20px);
+    width: 100%;
+    height: calc(100vh - 16px);
+    height: calc(100dvh - 16px);
+    max-height: none;
+    overflow: auto;
+    overscroll-behavior: contain;
   }
 
   .siapp-panel {
@@ -2010,6 +2015,14 @@ input[type="range"]:focus {
     background: rgba(255, 255, 255, 0.9);
     box-shadow: 0 8px 22px rgba(15, 23, 42, 0.1);
     backdrop-filter: blur(12px);
+    transition: transform 180ms ease, opacity 180ms ease, box-shadow 180ms ease;
+    will-change: transform;
+  }
+
+  .topbar.is-scroll-hidden {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(calc(-100% - 14px));
   }
 
   .topbar .brand-block {

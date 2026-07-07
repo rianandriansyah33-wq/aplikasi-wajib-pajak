@@ -31,6 +31,7 @@ const fields = {
 };
 
 const controls = {
+  topbar: document.querySelector(".topbar"),
   formTitle: document.querySelector("#formTitle"),
   toggleFormBtn: document.querySelector("#toggleFormBtn"),
   resetFormBtn: document.querySelector("#resetFormBtn"),
@@ -1434,6 +1435,8 @@ function openRecordDetail(id) {
   activeDetailRecordId = id;
   renderRecordDetail(record);
   controls.detailOverlay.hidden = false;
+  const detailPanel = controls.detailOverlay.querySelector(".detail-panel");
+  if (detailPanel) detailPanel.scrollTop = 0;
   document.body.classList.add("modal-open");
   controls.detailCloseBtn.focus();
 }
@@ -1819,7 +1822,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260707-1905";
+    const helperSrc = "siapp-helper.html?v=20260707-1920";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }
@@ -1835,10 +1838,54 @@ function closeSiappModal() {
   document.body.classList.remove("modal-open");
 }
 
+function startMobileHeaderAutoHide() {
+  if (!controls.topbar) return;
+
+  const mediaQuery = window.matchMedia("(max-width: 820px)");
+  let lastScrollY = window.scrollY;
+  let ticking = false;
+
+  function setHeaderHidden(shouldHide) {
+    controls.topbar.classList.toggle("is-scroll-hidden", shouldHide);
+  }
+
+  function updateHeader() {
+    ticking = false;
+    if (!mediaQuery.matches || document.body.classList.contains("modal-open")) {
+      setHeaderHidden(false);
+      lastScrollY = window.scrollY;
+      return;
+    }
+
+    const currentY = Math.max(0, window.scrollY);
+    const delta = currentY - lastScrollY;
+    const menuOpen = controls.mobileMenuPanel && !controls.mobileMenuPanel.hidden;
+
+    if (menuOpen || currentY < 60 || delta < -6) {
+      setHeaderHidden(false);
+    } else if (delta > 8 && currentY > 90) {
+      closeMobileMenu();
+      setHeaderHidden(true);
+    }
+
+    lastScrollY = currentY;
+  }
+
+  window.addEventListener("scroll", function () {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(updateHeader);
+  }, { passive: true });
+
+  window.addEventListener("resize", updateHeader);
+  if (mediaQuery.addEventListener) mediaQuery.addEventListener("change", updateHeader);
+}
+
 function goHome() {
   closeMobileMenu();
   closeSiappModal();
   closeRecordDetail();
+  if (controls.topbar) controls.topbar.classList.remove("is-scroll-hidden");
   if (controls.dashboardSection) controls.dashboardSection.classList.remove("is-open");
   if (controls.mobileDashboardBtn) controls.mobileDashboardBtn.setAttribute("aria-expanded", "false");
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2109,4 +2156,5 @@ formatNominalInput();
 updateProductionSummary();
 updateProductionCheckPreview();
 updateSiappAutofillPanel();
+startMobileHeaderAutoHide();
 initializeRemoteDatabase();
