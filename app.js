@@ -666,7 +666,7 @@ function cleanOwnerName(value) {
     .replace(/\b(KEC|KEL|DESA|DUSUN|JL|JLN|JALAN|RT|RW|GG|GANG|NO|NOMOR|BLOK|KAV|PERUM|DK|DS)\b.*$/, "")
     .trim();
   if (/\d/.test(ownerName)) {
-    ownerName = ownerName.replace(/\b(MULYOREJO|MULYOSARI|MANYAR|SUTOREJO|KALIJUDAN|KALISARI|KENJERAN|KERTAJAYA|DHARMAHUSADA|BABATAN|TEMPUREJO|WISMA|PONDOK|KARANG|DUKUH|RUNGKUT|SUKOLILO|KEPUTIH|KLAMPIS|MENUR|MOJO|AIRLANGGA|SURABAYA|GRESIK|SIDOARJO)\b.*$/, "").trim();
+    ownerName = ownerName.replace(/\b(MULYOREJO|MULYOSARI|MANYAR|SUTOREJO|KALIJUDAN|KALISARI|KENJERAN|KERTAJAYA|DHARMAHUSADA|BABATAN|TEMPUREJO|WISMA|PONDOK|KARANG|DUKUH|RUNGKUT|SUKOLILO|KEPUTIH|KLAMPIS|MENUR|MOJO|AIRLANGGA|SURABAYA|GRESIK|SIDOARJO|CHANDRALAGUNA|PURI|ASRI|TAMAN|GRAHA|GRIYA|CITRA|PERMATA|VILLA|KOMP|KOMPLEK|PERUMAHAN)\b.*$/, "").trim();
   }
   return ownerName
     .replace(/\b[A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3}\b.*$/, "")
@@ -1010,7 +1010,12 @@ function applyProductionLetterUpdates(sourceRecords) {
       isChanged = true;
     }
 
-    if (productionRecord.taxValidDate && !existingRecord.taxValidDate) {
+    if (productionRecord.ownerName && existingRecord.ownerName !== productionRecord.ownerName) {
+      existingRecord.ownerName = productionRecord.ownerName;
+      isChanged = true;
+    }
+
+    if (productionRecord.taxValidDate && existingRecord.taxValidDate !== productionRecord.taxValidDate) {
       existingRecord.taxValidDate = productionRecord.taxValidDate;
       isChanged = true;
     }
@@ -1876,7 +1881,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260707-2030";
+    const helperSrc = "siapp-helper.html?v=20260707-2115";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }

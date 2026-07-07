@@ -287,6 +287,8 @@ function upgradeTaxpayerLettersFromProduction_(productionRecords) {
     targetByPlate[plateKey] = {
       letterType: productionRecord.isPaid ? (existing.letterType || "") : getHigherLetterType_(existing.letterType, productionRecord.letterType),
       taxValidDate: productionRecord.taxValidDate || existing.taxValidDate || "",
+      ownerName: productionRecord.ownerName || existing.ownerName || "",
+      paymentStatus: productionRecord.isPaid ? "Sudah bayar" : "Belum bayar",
       calculatedTaxPotential: Number(productionRecord.calculatedTaxPotential || existing.calculatedTaxPotential || 0)
     };
   });
@@ -317,13 +319,23 @@ function upgradeTaxpayerLettersFromProduction_(productionRecords) {
       isChanged = true;
     }
 
-    if (target.taxValidDate && !record.taxValidDate) {
+    if (target.ownerName && record.ownerName !== target.ownerName) {
+      record.ownerName = target.ownerName;
+      isChanged = true;
+    }
+
+    if (target.taxValidDate && record.taxValidDate !== target.taxValidDate) {
       record.taxValidDate = target.taxValidDate;
       isChanged = true;
     }
 
     if (target.calculatedTaxPotential && Number(record.taxPotential || 0) !== target.calculatedTaxPotential) {
       record.taxPotential = target.calculatedTaxPotential;
+      isChanged = true;
+    }
+
+    if (target.paymentStatus && record.status !== target.paymentStatus) {
+      record.status = target.paymentStatus;
       isChanged = true;
     }
 
@@ -451,7 +463,7 @@ function cleanOwnerName_(value) {
     .replace(/\b(KEC|KEL|DESA|DUSUN|JL|JLN|JALAN|RT|RW|GG|GANG|NO|NOMOR|BLOK|KAV|PERUM|DK|DS)\b.*$/, "")
     .trim();
   if (/\d/.test(ownerName)) {
-    ownerName = ownerName.replace(/\b(MULYOREJO|MULYOSARI|MANYAR|SUTOREJO|KALIJUDAN|KALISARI|KENJERAN|KERTAJAYA|DHARMAHUSADA|BABATAN|TEMPUREJO|WISMA|PONDOK|KARANG|DUKUH|RUNGKUT|SUKOLILO|KEPUTIH|KLAMPIS|MENUR|MOJO|AIRLANGGA|SURABAYA|GRESIK|SIDOARJO)\b.*$/, "").trim();
+    ownerName = ownerName.replace(/\b(MULYOREJO|MULYOSARI|MANYAR|SUTOREJO|KALIJUDAN|KALISARI|KENJERAN|KERTAJAYA|DHARMAHUSADA|BABATAN|TEMPUREJO|WISMA|PONDOK|KARANG|DUKUH|RUNGKUT|SUKOLILO|KEPUTIH|KLAMPIS|MENUR|MOJO|AIRLANGGA|SURABAYA|GRESIK|SIDOARJO|CHANDRALAGUNA|PURI|ASRI|TAMAN|GRAHA|GRIYA|CITRA|PERMATA|VILLA|KOMP|KOMPLEK|PERUMAHAN)\b.*$/, "").trim();
   }
   return ownerName
     .replace(/\b[A-Z]{1,2}\s*\d{1,4}\s*[A-Z]{1,3}\b.*$/, "")
