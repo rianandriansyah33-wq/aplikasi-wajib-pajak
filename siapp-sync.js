@@ -641,6 +641,47 @@
     }];
   }
 
+  function getQuickPeriod(sourceDocument) {
+    const controls = getControlSet(sourceDocument);
+    const hasPeriodControls = Boolean(controls.monthSelect || controls.yearSelect);
+    const currentDate = new Date();
+    let month = hasPeriodControls ? detectMonth(sourceDocument) : currentDate.getMonth() + 1;
+    let year = hasPeriodControls ? detectYear(sourceDocument) : currentDate.getFullYear();
+
+    if (!month) month = currentDate.getMonth() + 1;
+    if (!year) year = currentDate.getFullYear();
+
+    return { month: month, year: year };
+  }
+
+  function monthLabelFromNumber(month) {
+    const entry = Object.keys(monthMap).find(function (name) {
+      return monthMap[name] === Number(month);
+    });
+    return entry || String(month);
+  }
+
+  function getQuickFilterForTarget(targetDocument, sourceDocument) {
+    const period = getQuickPeriod(sourceDocument || document);
+    const controls = getControlSet(targetDocument);
+    const monthOption = getMonthOptions(controls.monthSelect).find(function (option) {
+      return Number(option.month) === Number(period.month);
+    });
+    const yearOption = getYearOptions(controls.yearSelect).find(function (option) {
+      return Number(option.year) === Number(period.year);
+    });
+
+    return [{
+      month: period.month,
+      monthValue: monthOption ? monthOption.value : String(period.month).padStart(2, "0"),
+      monthLabel: monthOption ? monthOption.label : monthLabelFromNumber(period.month),
+      year: period.year,
+      yearValue: yearOption ? yearOption.value : String(period.year),
+      yearLabel: yearOption ? yearOption.label : String(period.year),
+      perPageValue: getMaxPerPageValue(controls.perPageSelect) || "100"
+    }];
+  }
+
   async function collectFramePaginationRecords(frame, baseParsed) {
     const frameDocument = frame.contentDocument;
     const pages = [baseParsed];
@@ -796,6 +837,22 @@
     });
   }
 
+  function discoverQuickProductionTargets() {
+    const discoveredTargets = discoverProductionTargets();
+    const targetsByLetter = {};
+
+    discoveredTargets.forEach(function (target) {
+      if (target && target.letterType) targetsByLetter[target.letterType] = target.url;
+    });
+
+    return letterOrder.map(function (letterType) {
+      return {
+        letterType: letterType,
+        url: targetsByLetter[letterType] || window.location.href
+      };
+    });
+  }
+
   async function prepareTargets() {
     const targets = discoverProductionTargets();
     const preparedTargets = [];
@@ -880,10 +937,7 @@
     }
 
     try {
-      const targets = isFullSync ? discoverProductionTargets() : [{
-        letterType: detectLetterType(document),
-        url: window.location.href
-      }];
+      const targets = isFullSync ? discoverProductionTargets() : discoverQuickProductionTargets();
       if (!targets.length) {
         setStatus("Menu Buku Produksi tidak ditemukan.", "rgb(180,35,24)");
         if (!settings.silent) alert("Menu Buku Produksi tidak ditemukan di halaman SIAPP.");
@@ -904,21 +958,21 @@
 
       let frame = null;
       let filterNumber = 0;
-      let totalFilters = 0;
+      let totalFilters = isFullSync ? 0 : targets.length;
       let totalRecords = 0;
 
       for (let targetIndex = 0; targetIndex < targets.length; targetIndex += 1) {
         const target = targets[targetIndex];
         setStatus("Membuka menu " + target.letterType + "...");
         const targetDocument = target.url === window.location.href ? document : await fetchDocument(target.url);
-        const filters = isFullSync ? getTargetFiltersFromDocument(targetDocument) : getCurrentFilterFromDocument(document);
+        const filters = isFullSync ? getTargetFiltersFromDocument(targetDocument) : getQuickFilterForTarget(targetDocument, document);
         let frameLoaded = false;
-        totalFilters += filters.length;
+        if (isFullSync) totalFilters += filters.length;
 
         for (let filterIndex = 0; filterIndex < filters.length; filterIndex += 1) {
           filterNumber += 1;
           const filter = filters[filterIndex];
-          const progressText = isFullSync ? "Sinkron lengkap " + filterNumber + "/" + (totalFilters || "?") : isWatchSync ? "Pantau otomatis" : "Sinkron cepat";
+          const progressText = isFullSync ? "Sinkron lengkap " + filterNumber + "/" + (totalFilters || "?") : isWatchSync ? "Pantau otomatis " + filterNumber + "/" + (totalFilters || "?") : "Sinkron cepat " + filterNumber + "/" + (totalFilters || "?");
           setStatus(progressText + " - " + target.letterType + " " + filter.monthLabel + " " + filter.yearLabel);
           let parsed = await collectDirectEndpointRecords(target, filter, targetDocument);
 

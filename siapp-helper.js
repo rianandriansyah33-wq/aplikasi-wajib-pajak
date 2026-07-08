@@ -49,7 +49,7 @@
   if (bookmarkletLink) bookmarkletLink.href = quickBookmarklet;
   if (watchBookmarkletLink) watchBookmarkletLink.href = watchBookmarklet;
   if (fullBookmarkletLink) fullBookmarkletLink.href = fullBookmarklet;
-  showStatus("Tombol siap dipasang. Pakai Sinkron Cepat untuk harian, Pantau Otomatis untuk cek berkala.");
+  showStatus("Tombol siap dipasang. Sinkron Cepat membaca SPOS, NPP, dan NTP bulan berjalan sekaligus.");
 
   if (copyButton) {
     copyButton.addEventListener("click", async function () {

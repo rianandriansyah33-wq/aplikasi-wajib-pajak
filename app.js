@@ -1032,7 +1032,7 @@ function updateProductionCheckPreview() {
 
   const match = getProductionMatch(plateNumber);
   if (!match) {
-    controls.productionCheckResult.textContent = "Nopol belum ada di SIAPP";
+    controls.productionCheckResult.textContent = "Nopol belum tersinkron SIAPP";
     controls.productionCheckResult.classList.add("is-neutral");
     return;
   }
@@ -2133,7 +2133,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260708-2055";
+    const helperSrc = "siapp-helper.html?v=20260708-2120";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }
