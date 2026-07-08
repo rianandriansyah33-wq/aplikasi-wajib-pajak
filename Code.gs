@@ -14,7 +14,9 @@ var HEADERS = [
   "taxPotential",
   "phone",
   "status",
-  "updatedAt"
+  "updatedAt",
+  "fieldVisitDate",
+  "fieldVisitNote"
 ];
 
 var PRODUCTION_HEADERS = [
@@ -474,7 +476,9 @@ function normalizeRecord_(record) {
     taxPotential: Number(record.taxPotential || 0),
     phone: String(record.phone || ""),
     status: String(record.status || "Belum bayar"),
-    updatedAt: String(record.updatedAt || new Date().toISOString())
+    updatedAt: String(record.updatedAt || new Date().toISOString()),
+    fieldVisitDate: String(record.fieldVisitDate || ""),
+    fieldVisitNote: String(record.fieldVisitNote || "").toUpperCase().trim()
   };
 }
 

@@ -26,6 +26,8 @@ const fields = {
   plateNumber: document.querySelector("#plateNumber"),
   ownerName: document.querySelector("#ownerName"),
   taxPotential: document.querySelector("#taxPotential"),
+  fieldVisitDate: document.querySelector("#fieldVisitDate"),
+  fieldVisitNote: document.querySelector("#fieldVisitNote"),
   phone: document.querySelector("#phone"),
   status: document.querySelector("#status")
 };
@@ -38,6 +40,7 @@ const controls = {
   searchInput: document.querySelector("#searchInput"),
   statusFilter: document.querySelector("#statusFilter"),
   dateFilter: document.querySelector("#dateFilter"),
+  dlFilter: document.querySelector("#dlFilter"),
   clearAllBtn: document.querySelector("#clearAllBtn"),
   homeBtn: document.querySelector("#homeBtn"),
   exportJsonBtn: document.querySelector("#exportJsonBtn"),
@@ -76,7 +79,24 @@ const summary = {
   unpaidRecords: document.querySelector("#unpaidRecords"),
   overdueRecords: document.querySelector("#overdueRecords"),
   todayFollowUps: document.querySelector("#todayFollowUps"),
-  unpaidPotential: document.querySelector("#unpaidPotential")
+  unpaidPotential: document.querySelector("#unpaidPotential"),
+  dlMonthCount: document.querySelector("#dlMonthCount"),
+  paidMonthAmount: document.querySelector("#paidMonthAmount"),
+  dlConversionRate: document.querySelector("#dlConversionRate"),
+  dashboardMonthLabel: document.querySelector("#dashboardMonthLabel"),
+  dashboardInsights: document.querySelector("#dashboardInsights"),
+  dlWeekCounts: [
+    document.querySelector("#dlWeek1Count"),
+    document.querySelector("#dlWeek2Count"),
+    document.querySelector("#dlWeek3Count"),
+    document.querySelector("#dlWeek4Count")
+  ],
+  dlWeekPaid: [
+    document.querySelector("#dlWeek1Paid"),
+    document.querySelector("#dlWeek2Paid"),
+    document.querySelector("#dlWeek3Paid"),
+    document.querySelector("#dlWeek4Paid")
+  ]
 };
 
 let records = loadRecords().map(normalizeRecord);
@@ -454,6 +474,39 @@ function dateToIso(date) {
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0")
   ].join("-");
+}
+
+function getMonthContext(dateValue) {
+  const date = dateValue ? parseLocalDate(dateValue) : new Date();
+  const safeDate = date && !Number.isNaN(date.getTime()) ? date : new Date();
+  const year = safeDate.getFullYear();
+  const monthIndex = safeDate.getMonth();
+  const month = monthIndex + 1;
+  const label = safeDate.toLocaleDateString("id-ID", { month: "long", year: "numeric" });
+  return {
+    year: year,
+    month: month,
+    monthIndex: monthIndex,
+    label: label.charAt(0).toUpperCase() + label.slice(1),
+    startIso: dateToIso(new Date(year, monthIndex, 1)),
+    endIso: dateToIso(new Date(year, monthIndex + 1, 0))
+  };
+}
+
+function isDateInMonth(dateValue, context) {
+  const date = parseLocalDate(dateValue);
+  if (!date || Number.isNaN(date.getTime())) return false;
+  return date.getFullYear() === context.year && date.getMonth() === context.monthIndex;
+}
+
+function getMonthWeekNumber(dateValue) {
+  const date = parseLocalDate(dateValue);
+  if (!date || Number.isNaN(date.getTime())) return 0;
+  const day = date.getDate();
+  if (day <= 7) return 1;
+  if (day <= 14) return 2;
+  if (day <= 21) return 3;
+  return 4;
 }
 
 function addDaysIso(value, days) {
@@ -1052,6 +1105,8 @@ function mergeDuplicateRecord(existingRecord, incomingRecord) {
     taxPotential: incomingRecord.taxPotential || existingRecord.taxPotential,
     phone: incomingRecord.phone || existingRecord.phone,
     status: getAutoPaymentStatus(incomingRecord.plateNumber || existingRecord.plateNumber, incomingRecord.status || existingRecord.status),
+    fieldVisitDate: incomingRecord.fieldVisitDate || existingRecord.fieldVisitDate,
+    fieldVisitNote: incomingRecord.fieldVisitNote || existingRecord.fieldVisitNote,
     updatedAt: new Date().toISOString()
   });
 }
@@ -1143,6 +1198,8 @@ function normalizeRecord(record) {
     taxPotential: getNominalNumber(record.taxPotential || record.nominal || 0),
     phone: normalizeWhatsapp(record.phone),
     status: record.status || "Belum bayar",
+    fieldVisitDate: toIsoDate(record.fieldVisitDate || record.dlDate || record.dinasLuarDate || ""),
+    fieldVisitNote: normalizeUpperText(record.fieldVisitNote || record.dlNote || record.dinasLuarNote || record.keterangan || record.note || ""),
     updatedAt: record.updatedAt || new Date().toISOString()
   };
 }
@@ -1157,6 +1214,8 @@ function readForm() {
     taxPotential: fields.taxPotential ? getNominalNumber(fields.taxPotential.value) : 0,
     phone: fields.phone.value,
     status: getAutoPaymentStatus(fields.plateNumber.value, fields.status.value || "Belum bayar"),
+    fieldVisitDate: fields.fieldVisitDate ? toIsoDate(fields.fieldVisitDate.value) : "",
+    fieldVisitNote: fields.fieldVisitNote ? fields.fieldVisitNote.value : "",
     updatedAt: new Date().toISOString()
   });
 }
@@ -1175,6 +1234,11 @@ function fillForm(record) {
   }
   fields.phone.value = formatWhatsappLocal(record.phone);
   fields.status.value = record.status;
+  if (fields.fieldVisitDate) {
+    fields.fieldVisitDate.value = formatDateForInput(record.fieldVisitDate);
+    fields.fieldVisitDate.dataset.previousDigits = fields.fieldVisitDate.value.replace(/\D/g, "");
+  }
+  if (fields.fieldVisitNote) fields.fieldVisitNote.value = record.fieldVisitNote || "";
   controls.formTitle.textContent = "Edit Wajib Pajak";
   updateDuplicateCheckPreview();
   updateProductionCheckPreview();
@@ -1194,6 +1258,11 @@ function resetForm() {
     fields.taxPotential.dataset.previousDigits = "";
     fields.taxPotential.dataset.siappPlateKey = "";
   }
+  if (fields.fieldVisitDate) {
+    fields.fieldVisitDate.value = "";
+    fields.fieldVisitDate.dataset.previousDigits = "";
+  }
+  if (fields.fieldVisitNote) fields.fieldVisitNote.value = "";
   controls.formTitle.textContent = "Tambah Wajib Pajak";
   updateDuplicateCheckPreview();
   updateProductionCheckPreview();
@@ -1204,17 +1273,35 @@ function getFilteredRecords() {
   const query = controls.searchInput.value.trim().toLowerCase();
   const status = controls.statusFilter.value;
   const followUpCategory = controls.dateFilter.value;
+  const dlFilter = controls.dlFilter ? controls.dlFilter.value : "all";
 
   return records
     .filter(function (record) {
-      const haystack = [record.ownerName, record.plateNumber, record.letterType, record.phone].join(" ").toLowerCase();
+      const haystack = [record.ownerName, record.plateNumber, record.letterType, record.phone, record.fieldVisitNote].join(" ").toLowerCase();
 
       if (query && !haystack.includes(query)) return false;
       if (status !== "all" && getSiappPaymentFilterState(record) !== status) return false;
       if (!matchesFollowUpCategory(record, followUpCategory)) return false;
+      if (!matchesDlFilter(record, dlFilter)) return false;
       return true;
     })
     .sort(sortByDate);
+}
+
+function matchesDlFilter(record, filterValue) {
+  if (!filterValue || filterValue === "all") return true;
+  if (filterValue === "noDl") return !record.fieldVisitDate;
+
+  const monthContext = getMonthContext();
+  const isThisMonth = isDateInMonth(record.fieldVisitDate, monthContext);
+  if (!isThisMonth) return false;
+
+  if (filterValue === "dlThisMonth") return true;
+  if (filterValue === "dlPaidThisMonth") return isRecordPaid(record);
+  if (filterValue === "dlUnpaidThisMonth") return !isRecordPaid(record);
+
+  const week = getMonthWeekNumber(record.fieldVisitDate);
+  return filterValue === "dlWeek" + week;
 }
 
 function matchesFollowUpCategory(record, category) {
@@ -1253,9 +1340,35 @@ function isDateWithin(dateValue, today, limit, includePaid) {
 
 function updateSummary() {
   const today = todayIso();
+  const monthContext = getMonthContext(today);
   const unpaid = records.filter(function (record) {
     return !isRecordPaid(record);
   });
+  const monthDlRecords = records.filter(function (record) {
+    return isDateInMonth(record.fieldVisitDate, monthContext);
+  });
+  const monthPaidDlRecords = monthDlRecords.filter(function (record) {
+    return isRecordPaid(record);
+  });
+  const paidMonthAmount = monthPaidDlRecords.reduce(function (total, record) {
+    return total + Number(record.taxPotential || 0);
+  }, 0);
+  const weeklyStats = [1, 2, 3, 4].map(function (week) {
+    const weekRecords = monthDlRecords.filter(function (record) {
+      return getMonthWeekNumber(record.fieldVisitDate) === week;
+    });
+    const paidRecords = weekRecords.filter(function (record) {
+      return isRecordPaid(record);
+    });
+    return {
+      count: weekRecords.length,
+      paidCount: paidRecords.length,
+      amount: paidRecords.reduce(function (total, record) {
+        return total + Number(record.taxPotential || 0);
+      }, 0)
+    };
+  });
+
   summary.totalRecords.textContent = records.length;
   summary.unpaidRecords.textContent = unpaid.length;
   summary.overdueRecords.textContent = records.filter(function (record) {
@@ -1268,6 +1381,57 @@ function updateSummary() {
   summary.unpaidPotential.textContent = formatCurrency(unpaid.reduce(function (total, record) {
     return total + Number(record.taxPotential || 0);
   }, 0));
+
+  if (summary.dlMonthCount) summary.dlMonthCount.textContent = monthDlRecords.length;
+  if (summary.paidMonthAmount) summary.paidMonthAmount.textContent = formatCurrency(paidMonthAmount);
+  if (summary.dlConversionRate) {
+    const rate = monthDlRecords.length ? Math.round((monthPaidDlRecords.length / monthDlRecords.length) * 100) : 0;
+    summary.dlConversionRate.textContent = rate + "%";
+  }
+  if (summary.dashboardMonthLabel) summary.dashboardMonthLabel.textContent = monthContext.label;
+  weeklyStats.forEach(function (stat, index) {
+    if (summary.dlWeekCounts[index]) summary.dlWeekCounts[index].textContent = stat.count + " DL";
+    if (summary.dlWeekPaid[index]) summary.dlWeekPaid[index].textContent = formatCurrency(stat.amount) + " cair";
+  });
+  renderDashboardInsights(monthDlRecords, monthPaidDlRecords, weeklyStats, monthContext, paidMonthAmount);
+}
+
+function renderDashboardInsights(monthDlRecords, monthPaidDlRecords, weeklyStats, monthContext, paidMonthAmount) {
+  if (!summary.dashboardInsights) return;
+  summary.dashboardInsights.replaceChildren();
+
+  const insights = [];
+  const unpaidDlCount = monthDlRecords.length - monthPaidDlRecords.length;
+  const bestWeekIndex = weeklyStats.reduce(function (bestIndex, stat, index) {
+    return stat.amount > weeklyStats[bestIndex].amount ? index : bestIndex;
+  }, 0);
+  const bestWeek = weeklyStats[bestWeekIndex];
+
+  if (!monthDlRecords.length) {
+    insights.push("Belum ada data dinas luar pada " + monthContext.label + ".");
+  } else {
+    insights.push(monthDlRecords.length + " WP sudah DL pada " + monthContext.label + ", " + monthPaidDlRecords.length + " sudah cair.");
+    if (paidMonthAmount) insights.push("Nominal cair bulan ini " + formatCurrency(paidMonthAmount) + ".");
+    if (bestWeek && bestWeek.amount) {
+      insights.push("Minggu ke-" + (bestWeekIndex + 1) + " paling produktif dengan " + formatCurrency(bestWeek.amount) + " cair.");
+    }
+    if (unpaidDlCount) {
+      insights.push(unpaidDlCount + " WP hasil DL bulan ini masih perlu dipantau karena belum cair di SIAPP.");
+    } else {
+      insights.push("Semua data DL bulan ini sudah terdeteksi lunas.");
+    }
+  }
+
+  const urgentCount = records.filter(function (record) {
+    return !isRecordPaid(record) && matchesFollowUpCategory(record, "needsAction");
+  }).length;
+  if (urgentCount) insights.push(urgentCount + " WP masih masuk kategori follow-up segera.");
+
+  insights.slice(0, 5).forEach(function (text) {
+    const item = document.createElement("li");
+    item.textContent = text;
+    summary.dashboardInsights.append(item);
+  });
 }
 
 function describeDate(dateValue, paidLabel, isPaidSensitive) {
@@ -1509,6 +1673,8 @@ function renderRecordDetail(record) {
     createDetailItem("No Polisi", record.plateNumber || "Belum diisi"),
     createDetailItem("Nama Wajib Pajak", record.ownerName || "Belum diisi"),
     createDetailItem("No Whatsapp", record.phone || "Belum diisi"),
+    createDetailItem("Tgl Dinas Luar", record.fieldVisitDate ? formatDate(record.fieldVisitDate) : "Belum diisi"),
+    createDetailItem("Keterangan DL", record.fieldVisitNote || "Belum diisi"),
     createDetailItem("Masa Pajak", formatDate(record.taxValidDate) + " - " + taxInfo.text),
     createDetailItem("Status Bayar SIAPP", createSiappStatusDisplay(record))
   );
@@ -1658,6 +1824,13 @@ function render() {
     card.querySelector(".card-warning").classList.add(nextFollowUp.warningClass);
     card.querySelector(".plate-text").textContent = record.plateNumber || "No polisi belum diisi";
     card.querySelector(".owner-name").textContent = record.ownerName || "Nama belum diisi";
+    const dlInfo = card.querySelector(".card-dl-info");
+    if (dlInfo) {
+      dlInfo.textContent = record.fieldVisitDate
+        ? "DL " + formatDate(record.fieldVisitDate) + (record.fieldVisitNote ? " - " + record.fieldVisitNote : "")
+        : "Belum DL";
+      dlInfo.classList.toggle("is-empty", !record.fieldVisitDate);
+    }
     const productionElement = card.querySelector(".card-production");
     const productionMatch = getProductionMatch(record);
 
@@ -1877,6 +2050,8 @@ function toCsv(recordsToExport) {
     "Nama Wajib Pajak",
     "Nominal",
     "No Whatsapp",
+    "Tgl Dinas Luar",
+    "Keterangan DL",
     "SPOS H+15",
     "NPP H+30",
     "NTP H+60",
@@ -1901,6 +2076,8 @@ function toCsv(recordsToExport) {
       record.ownerName,
       record.taxPotential,
       record.phone,
+      formatDate(record.fieldVisitDate),
+      record.fieldVisitNote,
       sposPlan ? formatDate(sposPlan.date) : "",
       nppPlan ? formatDate(nppPlan.date) : "",
       ntpPlan ? formatDate(ntpPlan.date) : "",
@@ -1952,7 +2129,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260708-1410";
+    const helperSrc = "siapp-helper.html?v=20260708-1620";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }
@@ -2095,6 +2272,7 @@ fields.plateNumber.addEventListener("input", function () {
 
 if (fields.letterType) fields.letterType.addEventListener("change", updateDuplicateCheckPreview);
 if (fields.ownerName) fields.ownerName.addEventListener("input", formatUpperTextField);
+if (fields.fieldVisitNote) fields.fieldVisitNote.addEventListener("input", formatUpperTextField);
 controls.searchInput.addEventListener("input", formatUpperTextField);
 
 fields.phone.addEventListener("input", function () {
@@ -2106,6 +2284,11 @@ if (fields.taxValidDate) {
   fields.taxValidDate.addEventListener("blur", formatDateField);
 }
 
+if (fields.fieldVisitDate) {
+  fields.fieldVisitDate.addEventListener("input", formatDateField);
+  fields.fieldVisitDate.addEventListener("blur", formatDateField);
+}
+
 if (fields.taxPotential) {
   fields.taxPotential.addEventListener("input", function (event) {
     fields.taxPotential.dataset.siappPlateKey = "";
@@ -2114,7 +2297,8 @@ if (fields.taxPotential) {
   fields.taxPotential.addEventListener("blur", formatNominalInput);
 }
 
-[controls.searchInput, controls.statusFilter, controls.dateFilter].forEach(function (control) {
+[controls.searchInput, controls.statusFilter, controls.dateFilter, controls.dlFilter].forEach(function (control) {
+  if (!control) return;
   control.addEventListener("input", render);
 });
 

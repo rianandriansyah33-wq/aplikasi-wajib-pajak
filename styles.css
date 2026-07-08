@@ -360,7 +360,7 @@ textarea:focus-visible,
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
   gap: 12px;
 }
 
@@ -442,6 +442,14 @@ textarea:focus-visible,
   background: var(--money-soft);
 }
 
+.summary-tile.dl::after {
+  background: var(--primary-soft);
+}
+
+.summary-tile.success::after {
+  background: var(--success-soft);
+}
+
 .summary-tile.danger .summary-icon {
   background: var(--danger-soft);
   color: var(--danger);
@@ -460,6 +468,94 @@ textarea:focus-visible,
 .summary-tile.money .summary-icon {
   background: var(--money-soft);
   color: var(--money);
+}
+
+.summary-tile.dl .summary-icon {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.summary-tile.success .summary-icon {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.dashboard-performance {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(260px, 0.85fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.performance-panel,
+.insight-panel {
+  padding: 16px;
+  border: 1px solid rgba(221, 229, 238, 0.9);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.performance-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.performance-head h3,
+.insight-panel h3 {
+  margin-bottom: 0;
+  font-size: 20px;
+}
+
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.week-card {
+  display: grid;
+  gap: 8px;
+  min-height: 96px;
+  padding: 12px;
+  border: 1px solid #dfe8f3;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.week-card span,
+.week-card small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.week-card strong {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.insight-panel ul {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.insight-panel li {
+  padding: 10px 11px;
+  border: 1px solid #dfe8f3;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #445064;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.35;
 }
 
 .workspace {
@@ -678,7 +774,7 @@ textarea:focus {
 }
 
 .filters {
-  grid-template-columns: minmax(260px, 1.25fr) repeat(2, minmax(150px, 1fr));
+  grid-template-columns: minmax(240px, 1.3fr) repeat(3, minmax(150px, 1fr));
   margin-bottom: 14px;
 }
 
@@ -913,6 +1009,30 @@ textarea:focus {
 .card-production.is-unpaid {
   background: var(--warning-soft);
   color: var(--warning);
+}
+
+.card-dl-info {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1.15;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-dl-info.is-empty {
+  background: #eef2f6;
+  color: #64748b;
 }
 
 .card-actions {
@@ -1625,16 +1745,16 @@ tbody tr:last-child td {
 }
 
 @media (max-width: 1220px) {
-  .summary-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .workspace {
     grid-template-columns: 1fr;
   }
 
   .entry-panel {
     position: static;
+  }
+
+  .dashboard-performance {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -1693,6 +1813,10 @@ tbody tr:last-child td {
 
   .summary-tile.money {
     grid-column: 1 / -1;
+  }
+
+  .week-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .entry-panel,
@@ -1885,6 +2009,10 @@ tbody tr:last-child td {
 
   .summary-tile.money {
     grid-column: auto;
+  }
+
+  .week-grid {
+    grid-template-columns: 1fr;
   }
 
   .records-grid {

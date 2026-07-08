@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Follow-up Wajib Pajak Kendaraan</title>
-    <link rel="icon" href="favicon.svg?v=20260708-1410" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=20260708-1410" />
+    <link rel="icon" href="favicon.svg?v=20260708-1620" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css?v=20260708-1620" />
   </head>
   <body>
     <div class="app-shell">
@@ -119,6 +119,64 @@
               </div>
               <strong id="unpaidPotential">Rp0</strong>
             </article>
+            <article class="summary-tile dl">
+              <div class="summary-head">
+                <span>DL Bulan Ini</span>
+                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18 3 21V6l6-3 6 3 6-3v15l-6 3-6-3Z"/><path d="M9 3v15"/><path d="M15 6v15"/></svg></span>
+              </div>
+              <strong id="dlMonthCount">0</strong>
+            </article>
+            <article class="summary-tile success">
+              <div class="summary-head">
+                <span>Cair Bulan Ini</span>
+                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+              </div>
+              <strong id="paidMonthAmount">Rp0</strong>
+            </article>
+            <article class="summary-tile info">
+              <div class="summary-head">
+                <span>Efektivitas DL</span>
+                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-7"/></svg></span>
+              </div>
+              <strong id="dlConversionRate">0%</strong>
+            </article>
+          </div>
+          <div class="dashboard-performance">
+            <section class="performance-panel">
+              <div class="performance-head">
+                <div>
+                  <p class="eyebrow">Performa Dinas Luar</p>
+                  <h3 id="dashboardMonthLabel">Bulan berjalan</h3>
+                </div>
+              </div>
+              <div class="week-grid">
+                <article class="week-card">
+                  <span>Minggu 1</span>
+                  <strong id="dlWeek1Count">0 DL</strong>
+                  <small id="dlWeek1Paid">Rp0 cair</small>
+                </article>
+                <article class="week-card">
+                  <span>Minggu 2</span>
+                  <strong id="dlWeek2Count">0 DL</strong>
+                  <small id="dlWeek2Paid">Rp0 cair</small>
+                </article>
+                <article class="week-card">
+                  <span>Minggu 3</span>
+                  <strong id="dlWeek3Count">0 DL</strong>
+                  <small id="dlWeek3Paid">Rp0 cair</small>
+                </article>
+                <article class="week-card">
+                  <span>Minggu 4</span>
+                  <strong id="dlWeek4Count">0 DL</strong>
+                  <small id="dlWeek4Paid">Rp0 cair</small>
+                </article>
+              </div>
+            </section>
+            <section class="insight-panel">
+              <p class="eyebrow">Insight</p>
+              <h3>Catatan Otomatis</h3>
+              <ul id="dashboardInsights"></ul>
+            </section>
           </div>
         </section>
 
@@ -158,6 +216,14 @@
                     <input id="phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="81234567890" />
                   </div>
                 </label>
+                <label>
+                  <span>Tgl Dinas Luar</span>
+                  <input id="fieldVisitDate" type="text" inputmode="numeric" autocomplete="off" placeholder="08072026" />
+                </label>
+                <label class="wide-field">
+                  <span>Keterangan DL</span>
+                  <textarea id="fieldVisitNote" rows="2" placeholder="WP LUPA / JANJI BAYAR / RUMAH KOSONG"></textarea>
+                </label>
                 <div class="siapp-autofill-panel wide-field" id="siappAutofillPanel" aria-live="polite">
                   <div>
                     <span>Jenis Surat</span>
@@ -184,7 +250,7 @@
                   Simpan Data
                 </button>
               </div>
-              <p class="privacy-note">Isi No Polisi terlebih dahulu. Nama, masa pajak, jenis surat, dan nominal otomatis menyesuaikan data SIAPP yang sudah disinkron.</p>
+              <p class="privacy-note">Isi No Polisi terlebih dahulu. Nama, masa pajak, jenis surat, dan nominal otomatis dari SIAPP. Tgl Dinas Luar dan keterangan boleh diisi atau dikosongkan.</p>
             </div>
           </form>
 
@@ -203,7 +269,7 @@
             <div class="filters" aria-label="Filter data">
               <label class="search-box">
                 <span>Cari</span>
-                <input id="searchInput" type="search" placeholder="Nama, nopol, jenis surat, WhatsApp" />
+                <input id="searchInput" type="search" placeholder="Nama, nopol, jenis surat, WhatsApp, keterangan" />
               </label>
               <label>
                 <span>Status SIAPP</span>
@@ -224,6 +290,20 @@
                   <option value="soon">Biru - 30 hari</option>
                   <option value="waiting">Abu - menunggu jadwal</option>
                   <option value="paid">Hijau - sudah bayar</option>
+                </select>
+              </label>
+              <label>
+                <span>Filter Dinas Luar</span>
+                <select id="dlFilter">
+                  <option value="all">Semua DL</option>
+                  <option value="dlThisMonth">DL bulan berjalan</option>
+                  <option value="dlWeek1">Minggu 1 bulan berjalan</option>
+                  <option value="dlWeek2">Minggu 2 bulan berjalan</option>
+                  <option value="dlWeek3">Minggu 3 bulan berjalan</option>
+                  <option value="dlWeek4">Minggu 4 bulan berjalan</option>
+                  <option value="dlPaidThisMonth">Sudah cair bulan berjalan</option>
+                  <option value="dlUnpaidThisMonth">Belum cair setelah DL</option>
+                  <option value="noDl">Belum ada tanggal DL</option>
                 </select>
               </label>
             </div>
@@ -265,6 +345,7 @@
           <span class="owner-name"></span>
         </div>
         <span class="card-production"></span>
+        <span class="card-dl-info"></span>
         <div class="card-actions">
           <button class="siapp-check-btn" type="button">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -308,6 +389,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="config.js"></script>
-    <script src="app.js?v=20260708-1410"></script>
+    <script src="app.js?v=20260708-1620"></script>
   </body>
 </html>
