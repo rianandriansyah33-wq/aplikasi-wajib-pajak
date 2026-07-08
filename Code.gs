@@ -278,26 +278,24 @@ function upsertProductionRecords_(scope, records) {
 }
 
 function upgradeTaxpayerLettersFromProduction_(productionRecords) {
-  var targetByPlate = {};
+  var affectedPlateKeys = {};
 
   productionRecords.forEach(function (productionRecord) {
     if (!productionRecord) return;
     var plateKey = getPlateKey_(productionRecord.plateKey || productionRecord.plateNumber);
-    if (!plateKey) return;
-
-    var existing = targetByPlate[plateKey] || {};
-    targetByPlate[plateKey] = {
-      letterType: getHigherLetterType_(existing.letterType, productionRecord.letterType),
-      taxValidDate: productionRecord.taxValidDate || existing.taxValidDate || "",
-      ownerName: productionRecord.ownerName || existing.ownerName || "",
-      recordedDate: productionRecord.recordedDate || existing.recordedDate || "",
-      paymentStatus: productionRecord.isPaid ? "Sudah bayar" : "Belum bayar",
-      calculatedTaxPotential: Number(productionRecord.calculatedTaxPotential || existing.calculatedTaxPotential || 0)
-    };
+    if (plateKey) affectedPlateKeys[plateKey] = true;
   });
 
-  var targetPlateKeys = Object.keys(targetByPlate);
+  var targetPlateKeys = Object.keys(affectedPlateKeys);
   if (!targetPlateKeys.length) return [];
+
+  var productionByPlate = {};
+  listProductionRecords_().forEach(function (productionRecord) {
+    var plateKey = getPlateKey_(productionRecord.plateKey || productionRecord.plateNumber);
+    if (!affectedPlateKeys[plateKey]) return;
+    if (!productionByPlate[plateKey]) productionByPlate[plateKey] = [];
+    productionByPlate[plateKey].push(productionRecord);
+  });
 
   var sheet = getSheet_();
   var lastRow = sheet.getLastRow();
@@ -311,15 +309,13 @@ function upgradeTaxpayerLettersFromProduction_(productionRecords) {
     if (!record.id) return;
 
     var plateKey = getPlateKey_(record.plateNumber);
-    var target = targetByPlate[plateKey];
+    var target = getClosestProductionForTaxpayer_(productionByPlate[plateKey] || [], record);
     if (!target) return;
-    if (!isProductionRecordNearTaxpayer_(target, record)) return;
 
-    var nextLetter = getHigherLetterType_(record.letterType, target.letterType);
     var isChanged = false;
 
-    if (record.status !== "Sudah bayar" && nextLetter && nextLetter !== record.letterType) {
-      record.letterType = nextLetter;
+    if (target.letterType && record.letterType !== target.letterType) {
+      record.letterType = target.letterType;
       isChanged = true;
     }
 
@@ -338,8 +334,9 @@ function upgradeTaxpayerLettersFromProduction_(productionRecords) {
       isChanged = true;
     }
 
-    if (target.paymentStatus && record.status !== target.paymentStatus) {
-      record.status = target.paymentStatus;
+    var targetPaymentStatus = target.isPaid ? "Sudah bayar" : "Belum bayar";
+    if (record.status !== targetPaymentStatus) {
+      record.status = targetPaymentStatus;
       isChanged = true;
     }
 
@@ -366,6 +363,35 @@ function getHigherLetterType_(firstLetter, secondLetter) {
   if (firstRank < 0) return secondRank < 0 ? "" : String(secondLetter || "").toUpperCase();
   if (secondRank < 0) return String(firstLetter || "").toUpperCase();
   return secondRank > firstRank ? String(secondLetter || "").toUpperCase() : String(firstLetter || "").toUpperCase();
+}
+
+function getProductionRecordedDate_(record) {
+  return String(record && record.recordedDate || "") || extractSiappRecordedDateFromSourceText_(record && record.sourceText || "");
+}
+
+function compareProductionByInputDate_(first, second, referenceDate) {
+  var firstDistance = getDateDistance_(referenceDate, getProductionRecordedDate_(first));
+  var secondDistance = getDateDistance_(referenceDate, getProductionRecordedDate_(second));
+  if (firstDistance !== secondDistance) return firstDistance - secondDistance;
+
+  var firstRank = getLetterRank_(first.letterType);
+  var secondRank = getLetterRank_(second.letterType);
+  if (firstRank !== secondRank) return secondRank - firstRank;
+
+  return String(second.updatedAt || "").localeCompare(String(first.updatedAt || ""));
+}
+
+function getClosestProductionForTaxpayer_(productionRecords, taxpayerRecord) {
+  var referenceDate = getIsoDatePart_(taxpayerRecord.updatedAt);
+  var closeMatches = productionRecords
+    .filter(function (record) {
+      return getProductionRecordedDate_(record) && getDateDistance_(referenceDate, getProductionRecordedDate_(record)) <= PRODUCTION_MATCH_WINDOW_DAYS;
+    })
+    .sort(function (first, second) {
+      return compareProductionByInputDate_(first, second, referenceDate);
+    });
+
+  return closeMatches[0] || null;
 }
 
 function deleteRecords_(ids) {

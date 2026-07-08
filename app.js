@@ -6,7 +6,6 @@ const REMOTE_EMPTY_AFTER_WRITE_GUARD_MS = 15000;
 const JASA_RAHARJA_RODA_4 = 143000;
 const DENDA_RODA_4_PER_3_BULAN = 35000;
 const LETTER_SEQUENCE = ["SPOS", "NPP", "NTP"];
-const LETTER_MATCH_PRIORITY = ["NTP", "NPP", "SPOS"];
 const PRODUCTION_MATCH_WINDOW_DAYS = 7;
 const LETTER_OFFSETS = {
   SPOS: 15,
@@ -889,6 +888,9 @@ function sortProductionCandidates(first, second, referenceDate) {
   const firstDistance = getRecordedDateDistance(first, referenceDate);
   const secondDistance = getRecordedDateDistance(second, referenceDate);
   if (firstDistance !== secondDistance) return firstDistance - secondDistance;
+  const firstRank = getLetterRank(first.letterType);
+  const secondRank = getLetterRank(second.letterType);
+  if (firstRank !== secondRank) return secondRank - firstRank;
   return String(second.updatedAt || "").localeCompare(String(first.updatedAt || ""));
 }
 
@@ -905,18 +907,15 @@ function getProductionMatch(value) {
       return record.plateKey === plateKey;
     });
 
-  for (let priorityIndex = 0; priorityIndex < LETTER_MATCH_PRIORITY.length; priorityIndex += 1) {
-    const letterType = LETTER_MATCH_PRIORITY[priorityIndex];
-    const closeMatches = candidates
-      .filter(function (record) {
-        return record.letterType === letterType && getRecordedDateDistance(record, referenceDate) <= PRODUCTION_MATCH_WINDOW_DAYS;
-      })
-      .sort(function (first, second) {
-        return sortProductionCandidates(first, second, referenceDate);
-      });
+  const closeMatches = candidates
+    .filter(function (record) {
+      return getRecordedDateDistance(record, referenceDate) <= PRODUCTION_MATCH_WINDOW_DAYS;
+    })
+    .sort(function (first, second) {
+      return sortProductionCandidates(first, second, referenceDate);
+    });
 
-    if (closeMatches.length) return closeMatches[0];
-  }
+  if (closeMatches.length) return closeMatches[0];
 
   const hasRecordedDate = candidates.some(function (record) {
     return getProductionRecordedDate(record);
@@ -1071,14 +1070,22 @@ function mergeDuplicateRecord(existingRecord, incomingRecord) {
 
 function applyProductionLetterUpdates(sourceRecords) {
   const changedRecords = [];
+  const processedPlateKeys = {};
+
   sourceRecords.forEach(function (productionRecord) {
     if (!productionRecord) return;
     const existingRecord = findExistingRecordByPlate(productionRecord.plateNumber, "");
     if (!existingRecord) return;
-    if (!isProductionRecordNearReference(productionRecord, existingRecord)) return;
 
-    const nextLetterType = getHigherLetterType(existingRecord.letterType, productionRecord.letterType);
-    const breakdown = getProductionTaxBreakdown(productionRecord);
+    const plateKey = getPlateKey(existingRecord.plateNumber);
+    if (!plateKey || processedPlateKeys[plateKey]) return;
+    processedPlateKeys[plateKey] = true;
+
+    const selectedProductionRecord = getProductionMatch(existingRecord);
+    if (!selectedProductionRecord) return;
+
+    const nextLetterType = selectedProductionRecord.letterType;
+    const breakdown = getProductionTaxBreakdown(selectedProductionRecord);
     let isChanged = false;
 
     if (nextLetterType && nextLetterType !== existingRecord.letterType) {
@@ -1086,13 +1093,13 @@ function applyProductionLetterUpdates(sourceRecords) {
       isChanged = true;
     }
 
-    if (productionRecord.ownerName && existingRecord.ownerName !== productionRecord.ownerName) {
-      existingRecord.ownerName = productionRecord.ownerName;
+    if (selectedProductionRecord.ownerName && existingRecord.ownerName !== selectedProductionRecord.ownerName) {
+      existingRecord.ownerName = selectedProductionRecord.ownerName;
       isChanged = true;
     }
 
-    if (productionRecord.taxValidDate && existingRecord.taxValidDate !== productionRecord.taxValidDate) {
-      existingRecord.taxValidDate = productionRecord.taxValidDate;
+    if (selectedProductionRecord.taxValidDate && existingRecord.taxValidDate !== selectedProductionRecord.taxValidDate) {
+      existingRecord.taxValidDate = selectedProductionRecord.taxValidDate;
       isChanged = true;
     }
 
@@ -1101,7 +1108,7 @@ function applyProductionLetterUpdates(sourceRecords) {
       isChanged = true;
     }
 
-    const nextPaymentStatus = productionRecord.isPaid ? "Sudah bayar" : "Belum bayar";
+    const nextPaymentStatus = selectedProductionRecord.isPaid ? "Sudah bayar" : "Belum bayar";
     if (existingRecord.status !== nextPaymentStatus) {
       existingRecord.status = nextPaymentStatus;
       isChanged = true;
@@ -1957,7 +1964,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260707-2145";
+    const helperSrc = "siapp-helper.html?v=20260708-0910";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }
