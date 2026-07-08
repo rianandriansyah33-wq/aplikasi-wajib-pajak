@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Follow-up Wajib Pajak Kendaraan</title>
-    <link rel="icon" href="favicon.svg?v=20260708-1900" type="image/svg+xml" />
+    <link rel="icon" href="favicon.svg?v=20260708-2030" type="image/svg+xml" />
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="styles.css?v=20260708-1900" />
+    <link rel="stylesheet" href="styles.css?v=20260708-2030" />
   </head>
   <body>
     <div class="app-shell container-fluid">
@@ -21,7 +21,7 @@
             </div>
           </div>
 
-          <div class="top-actions d-none d-lg-flex">
+          <div class="top-actions d-none d-xl-flex">
             <button class="btn btn-light ghost-button" id="homeBtn" type="button" title="Home">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
               Home
@@ -44,7 +44,7 @@
             </label>
           </div>
 
-          <div class="mobile-actions d-lg-none">
+          <div class="mobile-actions d-xl-none">
             <button class="btn btn-primary mobile-menu-button" id="mobileMenuBtn" type="button" aria-expanded="false" aria-controls="mobileMenuPanel">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>
               Menu
@@ -89,9 +89,13 @@
                 <p class="eyebrow">Dashboard</p>
                 <h2>Ringkasan Follow-up</h2>
               </div>
+              <button class="btn btn-outline-secondary icon-button section-toggle-btn" id="toggleDashboardBtn" type="button" title="Lipat dashboard" aria-label="Lipat dashboard" aria-expanded="true" aria-controls="dashboardBody">
+                <svg class="icon collapse-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+              </button>
             </div>
 
-            <div class="row g-3 summary-grid">
+            <div class="dashboard-body" id="dashboardBody">
+              <div class="row g-3 summary-grid">
               <article class="col-12 col-sm-6 col-xl-3">
                 <div class="summary-tile total">
                   <div class="summary-head">
@@ -215,6 +219,7 @@
                 </div>
               </section>
             </div>
+            </div>
           </div>
         </section>
 
@@ -304,13 +309,19 @@
                     <p class="eyebrow">Daftar Prioritas</p>
                     <h2>Data Follow-up</h2>
                   </div>
-                  <button class="btn btn-outline-danger danger-button" id="clearAllBtn" type="button">
-                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
-                    Hapus Semua
-                  </button>
+                  <div class="list-actions d-flex align-items-center gap-2">
+                    <button class="btn btn-outline-danger danger-button" id="clearAllBtn" type="button">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                      Hapus Semua
+                    </button>
+                    <button class="btn btn-outline-secondary icon-button section-toggle-btn" id="toggleListBtn" type="button" title="Lipat daftar follow-up" aria-label="Lipat daftar follow-up" aria-expanded="true" aria-controls="listBody">
+                      <svg class="icon collapse-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+                    </button>
+                  </div>
                 </div>
 
-                <div class="row g-3 filters" aria-label="Filter data">
+                <div class="list-body" id="listBody">
+                  <div class="row g-3 filters" aria-label="Filter data">
                   <label class="col-12 col-lg-4">
                     <span class="form-label">Cari</span>
                     <input class="form-control" id="searchInput" type="search" placeholder="Nama, nopol, jenis surat, WhatsApp, keterangan" />
@@ -360,6 +371,7 @@
                   <svg class="empty-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
                   <h3>Belum ada data</h3>
                   <p>Tambahkan data wajib pajak potensial dari form di sebelah kiri.</p>
+                </div>
                 </div>
               </div>
             </div>
@@ -438,6 +450,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="app.js?v=20260708-1900"></script>
+    <script src="app.js?v=20260708-2030"></script>
   </body>
 </html>

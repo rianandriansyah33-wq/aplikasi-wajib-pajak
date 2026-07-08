@@ -55,6 +55,9 @@ const controls = {
   autoTaxPotential: document.querySelector("#autoTaxPotential"),
   syncStatus: document.querySelector("#syncStatus"),
   dashboardSection: document.querySelector("#dashboardSection"),
+  listPanel: document.querySelector(".list-panel"),
+  toggleDashboardBtn: document.querySelector("#toggleDashboardBtn"),
+  toggleListBtn: document.querySelector("#toggleListBtn"),
   mobileMenuBtn: document.querySelector("#mobileMenuBtn"),
   mobileMenuPanel: document.querySelector("#mobileMenuPanel"),
   mobileHomeBtn: document.querySelector("#mobileHomeBtn"),
@@ -2122,6 +2125,7 @@ function toggleMobileDashboard() {
   }
   closeMobileMenu();
   if (isOpen) {
+    setSectionCollapsed(controls.dashboardSection, controls.toggleDashboardBtn, false, "Buka dashboard", "Lipat dashboard");
     controls.dashboardSection.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 }
@@ -2129,7 +2133,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260708-1900";
+    const helperSrc = "siapp-helper.html?v=20260708-2030";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }
@@ -2148,7 +2152,6 @@ function closeSiappModal() {
 function startMobileHeaderAutoHide() {
   if (!controls.topbar) return;
 
-  const mediaQuery = window.matchMedia("(max-width: 820px)");
   let lastScrollY = window.scrollY;
   let ticking = false;
 
@@ -2158,7 +2161,7 @@ function startMobileHeaderAutoHide() {
 
   function updateHeader() {
     ticking = false;
-    if (!mediaQuery.matches || document.body.classList.contains("modal-open")) {
+    if (document.body.classList.contains("modal-open")) {
       setHeaderHidden(false);
       lastScrollY = window.scrollY;
       return;
@@ -2185,7 +2188,6 @@ function startMobileHeaderAutoHide() {
   }, { passive: true });
 
   window.addEventListener("resize", updateHeader);
-  if (mediaQuery.addEventListener) mediaQuery.addEventListener("change", updateHeader);
 }
 
 function goHome() {
@@ -2194,6 +2196,8 @@ function goHome() {
   closeRecordDetail();
   if (controls.topbar) controls.topbar.classList.remove("is-scroll-hidden");
   if (controls.dashboardSection) controls.dashboardSection.classList.remove("is-open");
+  setSectionCollapsed(controls.dashboardSection, controls.toggleDashboardBtn, false, "Buka dashboard", "Lipat dashboard");
+  setSectionCollapsed(controls.listPanel, controls.toggleListBtn, false, "Buka daftar follow-up", "Lipat daftar follow-up");
   if (controls.mobileDashboardBtn) controls.mobileDashboardBtn.setAttribute("aria-expanded", "false");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -2212,6 +2216,36 @@ function toggleInputForm() {
 
 function openInputForm() {
   setInputFormCollapsed(false);
+}
+
+function setSectionCollapsed(section, button, isCollapsed, openLabel, closeLabel) {
+  if (!section || !button) return;
+  section.classList.toggle("is-collapsed", isCollapsed);
+  button.setAttribute("aria-expanded", String(!isCollapsed));
+  button.title = isCollapsed ? openLabel : closeLabel;
+  button.setAttribute("aria-label", isCollapsed ? openLabel : closeLabel);
+}
+
+function toggleDashboardSection() {
+  if (!controls.dashboardSection) return;
+  setSectionCollapsed(
+    controls.dashboardSection,
+    controls.toggleDashboardBtn,
+    !controls.dashboardSection.classList.contains("is-collapsed"),
+    "Buka dashboard",
+    "Lipat dashboard"
+  );
+}
+
+function toggleListSection() {
+  if (!controls.listPanel) return;
+  setSectionCollapsed(
+    controls.listPanel,
+    controls.toggleListBtn,
+    !controls.listPanel.classList.contains("is-collapsed"),
+    "Buka daftar follow-up",
+    "Lipat daftar follow-up"
+  );
 }
 
 function formatNominalInput() {
@@ -2257,6 +2291,14 @@ form.addEventListener("submit", function (event) {
 
 if (controls.toggleFormBtn) {
   controls.toggleFormBtn.addEventListener("click", toggleInputForm);
+}
+
+if (controls.toggleDashboardBtn) {
+  controls.toggleDashboardBtn.addEventListener("click", toggleDashboardSection);
+}
+
+if (controls.toggleListBtn) {
+  controls.toggleListBtn.addEventListener("click", toggleListSection);
 }
 
 if (controls.resetFormBtn) {
