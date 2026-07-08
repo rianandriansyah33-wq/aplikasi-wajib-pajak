@@ -71,7 +71,7 @@ p {
 
 h1 {
   margin-bottom: 0;
-  font-size: clamp(1.28rem, 2.4vw, 2.1rem);
+  font-size: clamp(.98rem, 1.35vw, 1.25rem);
   font-weight: 900;
   line-height: 1.08;
 }
@@ -91,28 +91,44 @@ h3 {
 .app-shell {
   max-width: 1520px;
   margin: 0 auto;
-  padding: 1.25rem;
+  padding: 0 1rem 1.25rem;
 }
 
 .topbar {
   position: sticky;
-  top: .75rem;
+  top: 0;
   z-index: 30;
-  margin-bottom: 1rem;
-  padding: .8rem 1rem;
+  margin-bottom: .75rem;
+  padding: .38rem .7rem;
   border: 1px solid rgba(220, 229, 239, .9);
-  border-radius: 1rem;
-  background: rgba(255, 255, 255, .9);
-  box-shadow: 0 12px 32px rgba(15, 23, 42, .08);
+  border-top: 0;
+  border-radius: 0 0 .9rem .9rem;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .07);
   backdrop-filter: blur(12px);
   transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.topbar.is-scroll-hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(calc(-100% - .35rem));
+}
+
+.topbar > .container-fluid {
+  gap: .75rem;
 }
 
 .brand-block {
   display: flex;
   align-items: center;
-  gap: .85rem;
+  gap: .65rem;
   min-width: 0;
+}
+
+.brand-block.navbar-brand {
+  margin-right: 0;
+  padding: 0;
 }
 
 .brand-copy {
@@ -120,8 +136,8 @@ h3 {
 }
 
 .app-mark {
-  width: 3.35rem;
-  height: 3.35rem;
+  width: 2.25rem;
+  height: 2.25rem;
   display: grid;
   flex: 0 0 auto;
   place-items: center;
@@ -129,7 +145,7 @@ h3 {
   border-radius: .9rem;
   background: #fff;
   color: var(--app-primary);
-  font-size: .82rem;
+  font-size: .66rem;
   font-weight: 950;
   box-shadow: 0 8px 22px rgba(15, 23, 42, .06);
 }
@@ -147,14 +163,14 @@ h3 {
   display: inline-flex;
   align-items: center;
   max-width: 100%;
-  min-height: 1.45rem;
-  margin: .45rem 0 0;
-  padding: 0 .55rem;
+  min-height: 1.05rem;
+  margin: .18rem 0 0;
+  padding: 0 .42rem;
   border: 1px solid var(--app-line);
   border-radius: 999px;
   background: #fff;
   color: var(--app-muted);
-  font-size: .68rem;
+  font-size: .55rem;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -173,7 +189,11 @@ h3 {
 
 .top-actions {
   align-items: center;
-  gap: .5rem;
+  gap: .38rem;
+}
+
+.topbar .eyebrow {
+  display: none;
 }
 
 .ghost-button,
@@ -181,7 +201,7 @@ h3 {
 .secondary-button,
 .danger-button,
 .icon-button {
-  min-height: 2.5rem;
+  min-height: 2.25rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -195,13 +215,14 @@ h3 {
 .primary-button,
 .secondary-button,
 .danger-button {
-  padding-inline: .9rem;
+  padding-inline: .75rem;
 }
 
 .ghost-button {
   border-color: var(--app-line);
   background: #fff;
   color: var(--app-text);
+  font-size: .86rem;
   box-shadow: 0 8px 18px rgba(15, 23, 42, .05);
 }
 
@@ -225,9 +246,10 @@ h3 {
 }
 
 .icon-button {
-  width: 2.35rem;
-  height: 2.35rem;
-  min-height: 2.35rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  flex: 0 0 auto;
   padding: 0;
   border-color: var(--app-line);
   background: #fff;
@@ -272,7 +294,7 @@ h3 {
 }
 
 .mobile-menu-button {
-  min-height: 2.4rem;
+  min-height: 2.22rem;
   gap: .45rem;
   border: 0;
   border-radius: .75rem;
@@ -516,6 +538,10 @@ h3 {
   margin-bottom: 1rem;
 }
 
+.dashboard-header {
+  margin-bottom: 1rem;
+}
+
 .collapse-icon {
   transition: transform 160ms ease;
 }
@@ -524,11 +550,23 @@ h3 {
   transform: rotate(180deg);
 }
 
+.dashboard-section.is-collapsed .section-toggle-btn .collapse-icon,
+.list-panel.is-collapsed .section-toggle-btn .collapse-icon {
+  transform: rotate(180deg);
+}
+
 .entry-panel.is-collapsed .form-body {
   display: none;
 }
 
-.entry-panel.is-collapsed .panel-heading {
+.dashboard-section.is-collapsed .dashboard-body,
+.list-panel.is-collapsed .list-body {
+  display: none;
+}
+
+.entry-panel.is-collapsed .panel-heading,
+.dashboard-section.is-collapsed .dashboard-header,
+.list-panel.is-collapsed .panel-heading {
   margin-bottom: 0;
 }
 
@@ -650,6 +688,20 @@ textarea.form-control {
 
 .cards-wrap {
   min-height: 15rem;
+}
+
+.cards-wrap::-webkit-scrollbar {
+  width: .55rem;
+}
+
+.cards-wrap::-webkit-scrollbar-track {
+  background: #eef2f6;
+  border-radius: 999px;
+}
+
+.cards-wrap::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #cbd5e1;
 }
 
 .records-grid {
@@ -1429,42 +1481,69 @@ textarea.form-control {
   line-height: 1.45;
 }
 
+@media (min-width: 992px) {
+  .list-panel > .card {
+    max-height: calc(100vh - 5.5rem);
+  }
+
+  .list-panel > .card > .card-body {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .list-body {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  .cards-wrap {
+    max-height: clamp(23rem, calc(100vh - 23rem), 42rem);
+    overflow-y: auto;
+    padding-right: .35rem;
+    overscroll-behavior: contain;
+  }
+}
+
 @media (max-width: 1199.98px) {
   .entry-panel {
     position: static;
+  }
+
+  .topbar {
+    padding: .48rem .65rem;
+  }
+
+  .brand-block {
+    flex: 1 1 auto;
   }
 }
 
 @media (max-width: 991.98px) {
   .app-shell {
-    padding: .75rem;
+    padding: 0 .75rem .75rem;
   }
 
   .topbar {
-    top: .5rem;
     margin-bottom: .8rem;
-    padding: .6rem .65rem;
-  }
-
-  .topbar.is-scroll-hidden {
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(calc(-100% - 1rem));
+    padding: .4rem .6rem;
   }
 
   .brand-block {
-    gap: .55rem;
+    gap: .5rem;
   }
 
   .app-mark {
-    width: 2.55rem;
-    height: 2.55rem;
+    width: 2.15rem;
+    height: 2.15rem;
     border-radius: .75rem;
-    font-size: .72rem;
+    font-size: .62rem;
   }
 
   .topbar h1 {
-    font-size: clamp(.98rem, 4vw, 1.15rem);
+    font-size: clamp(.94rem, 3.6vw, 1.08rem);
   }
 
   .topbar .eyebrow {
@@ -1491,8 +1570,13 @@ textarea.form-control {
     flex-direction: column;
   }
 
-  .list-heading .danger-button {
+  .list-actions {
     width: 100%;
+  }
+
+  .list-heading .danger-button {
+    flex: 1 1 auto;
+    width: auto;
   }
 
   .helper-steps {
@@ -1552,7 +1636,7 @@ textarea.form-control {
 
 @media (max-width: 459.98px) {
   .app-shell {
-    padding: .55rem;
+    padding: 0 .55rem .55rem;
   }
 
   .app-mark {
@@ -1560,7 +1644,7 @@ textarea.form-control {
   }
 
   .topbar {
-    border-radius: .85rem;
+    border-radius: 0 0 .85rem .85rem;
   }
 
   .mobile-menu-button {
