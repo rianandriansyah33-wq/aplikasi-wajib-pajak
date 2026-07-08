@@ -6,7 +6,6 @@ const REMOTE_EMPTY_AFTER_WRITE_GUARD_MS = 15000;
 const JASA_RAHARJA_RODA_4 = 143000;
 const DENDA_RODA_4_PER_3_BULAN = 35000;
 const LETTER_SEQUENCE = ["SPOS", "NPP", "NTP"];
-const PRODUCTION_MATCH_WINDOW_DAYS = 7;
 const LETTER_OFFSETS = {
   SPOS: 15,
   NPP: 30,
@@ -792,7 +791,7 @@ function normalizeProductionRecord(record) {
     ownerName: cleanOwnerName(record.ownerName || ""),
     entryNumber: String(record.entryNumber || ""),
     status: String(record.status || "Belum terdeteksi lunas"),
-    isPaid: Boolean(record.isPaid === true || record.isPaid === "true" || record.status === "Lunas"),
+    isPaid: record.isPaid === true || String(record.isPaid || "").toLowerCase() === "true" || String(record.status || "").toUpperCase() === "LUNAS",
     paidDate: String(record.paidDate || ""),
     recordedDate: recordedDate,
     taxValidDate: taxValidDate,
@@ -894,10 +893,6 @@ function sortProductionCandidates(first, second, referenceDate) {
   return String(second.updatedAt || "").localeCompare(String(first.updatedAt || ""));
 }
 
-function isProductionRecordNearReference(productionRecord, referenceValue) {
-  return getRecordedDateDistance(productionRecord, getProductionReferenceDate(referenceValue)) <= PRODUCTION_MATCH_WINDOW_DAYS;
-}
-
 function getProductionMatch(value) {
   const plateKey = typeof value === "string" ? getPlateKey(value) : getPlateKey(value && value.plateNumber);
   if (!plateKey) return null;
@@ -909,18 +904,13 @@ function getProductionMatch(value) {
 
   const closeMatches = candidates
     .filter(function (record) {
-      return getRecordedDateDistance(record, referenceDate) <= PRODUCTION_MATCH_WINDOW_DAYS;
+      return getProductionRecordedDate(record);
     })
     .sort(function (first, second) {
       return sortProductionCandidates(first, second, referenceDate);
     });
 
   if (closeMatches.length) return closeMatches[0];
-
-  const hasRecordedDate = candidates.some(function (record) {
-    return getProductionRecordedDate(record);
-  });
-  if (hasRecordedDate) return null;
 
   return candidates.sort(function (a, b) {
     return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
@@ -986,9 +976,7 @@ function updateProductionCheckPreview() {
 
   const match = getProductionMatch(plateNumber);
   if (!match) {
-    controls.productionCheckResult.textContent = hasProductionPlate(plateNumber)
-      ? "Ada di SIAPP, tanggal rekam tidak dekat"
-      : "Nopol belum ada di SIAPP";
+    controls.productionCheckResult.textContent = "Nopol belum ada di SIAPP";
     controls.productionCheckResult.classList.add("is-neutral");
     return;
   }
@@ -1964,7 +1952,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260708-0910";
+    const helperSrc = "siapp-helper.html?v=20260708-1410";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }

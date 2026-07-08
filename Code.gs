@@ -1,7 +1,6 @@
 var SHEET_NAME = "DATA_WAJIB_PAJAK";
 var PRODUCTION_SHEET_NAME = "BUKU_PRODUKSI";
 var LETTER_SEQUENCE = ["SPOS", "NPP", "NTP"];
-var PRODUCTION_MATCH_WINDOW_DAYS = 7;
 var JASA_RAHARJA_RODA_4 = 143000;
 var DENDA_RODA_4_PER_3_BULAN = 35000;
 
@@ -385,13 +384,17 @@ function getClosestProductionForTaxpayer_(productionRecords, taxpayerRecord) {
   var referenceDate = getIsoDatePart_(taxpayerRecord.updatedAt);
   var closeMatches = productionRecords
     .filter(function (record) {
-      return getProductionRecordedDate_(record) && getDateDistance_(referenceDate, getProductionRecordedDate_(record)) <= PRODUCTION_MATCH_WINDOW_DAYS;
+      return getProductionRecordedDate_(record);
     })
     .sort(function (first, second) {
       return compareProductionByInputDate_(first, second, referenceDate);
     });
 
-  return closeMatches[0] || null;
+  if (closeMatches.length) return closeMatches[0];
+
+  return productionRecords.sort(function (first, second) {
+    return String(second.updatedAt || "").localeCompare(String(first.updatedAt || ""));
+  })[0] || null;
 }
 
 function deleteRecords_(ids) {
@@ -576,13 +579,6 @@ function getDateDistance_(firstIso, secondIso) {
   var secondDate = parseIsoDate_(secondIso);
   if (!firstDate || !secondDate) return 999999;
   return Math.abs(Math.round((secondDate.getTime() - firstDate.getTime()) / 86400000));
-}
-
-function isProductionRecordNearTaxpayer_(productionRecord, taxpayerRecord) {
-  var recordedDate = String(productionRecord.recordedDate || "") || extractSiappRecordedDateFromSourceText_(productionRecord.sourceText || "");
-  if (!recordedDate) return false;
-  var referenceDate = getIsoDatePart_(taxpayerRecord.updatedAt);
-  return getDateDistance_(referenceDate, recordedDate) <= PRODUCTION_MATCH_WINDOW_DAYS;
 }
 
 function getLateMonthCount_(taxValidDate) {
