@@ -1483,11 +1483,20 @@ textarea.form-control {
 
 @media (min-width: 992px) {
   .list-panel > .card {
-    max-height: calc(100vh - 4.15rem);
+    height: calc(100vh - 4.15rem);
+    min-height: 44rem;
+    max-height: none;
+    overflow: hidden;
+  }
+
+  .list-panel.is-collapsed > .card {
+    height: auto;
+    min-height: 0;
   }
 
   .list-panel > .card > .card-body {
     display: flex;
+    height: 100%;
     min-height: 0;
     flex-direction: column;
   }
@@ -1500,7 +1509,9 @@ textarea.form-control {
   }
 
   .cards-wrap {
-    max-height: clamp(32rem, calc(100vh - 15rem), 58rem);
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
     overflow-y: auto;
     padding-right: .35rem;
     overscroll-behavior: contain;
