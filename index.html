@@ -4,318 +4,364 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Follow-up Wajib Pajak Kendaraan</title>
-    <link rel="icon" href="favicon.svg?v=20260708-1620" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=20260708-1620" />
+    <link rel="icon" href="favicon.svg?v=20260708-1900" type="image/svg+xml" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css?v=20260708-1900" />
   </head>
   <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-block">
-          <div class="app-mark" aria-hidden="true">PKB</div>
-          <div>
-            <p class="eyebrow">Pendataan Potensi PKB</p>
-            <h1>Follow-up Wajib Pajak Kendaraan</h1>
-            <p class="sync-status" id="syncStatus">Database: Lokal</p>
+    <div class="app-shell container-fluid">
+      <header class="topbar navbar navbar-expand-lg app-navbar">
+        <div class="container-fluid px-0">
+          <div class="brand-block navbar-brand mb-0">
+            <div class="app-mark" aria-hidden="true">PKB</div>
+            <div class="brand-copy">
+              <p class="eyebrow">Pendataan Potensi PKB</p>
+              <h1>Follow-up Wajib Pajak Kendaraan</h1>
+              <p class="sync-status" id="syncStatus">Database: Lokal</p>
+            </div>
           </div>
-        </div>
-        <div class="top-actions">
-          <button class="ghost-button" id="homeBtn" type="button" title="Home">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
-            Home
-          </button>
-          <button class="ghost-button" id="siappHelperLink" type="button" title="Sinkron SIAPP">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>
-            SIAPP
-          </button>
-          <button class="ghost-button" id="exportJsonBtn" type="button" title="Export JSON">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></svg>
-            JSON
-          </button>
-          <button class="ghost-button" id="exportCsvBtn" type="button" title="Export CSV">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></svg>
-            CSV
-          </button>
-          <label class="ghost-button file-button" title="Import JSON" for="importFile">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M5 4h14"/></svg>
-            Import
-          </label>
-        </div>
-        <div class="mobile-actions">
-          <button class="ghost-button mobile-menu-button" id="mobileMenuBtn" type="button" aria-expanded="false" aria-controls="mobileMenuPanel">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>
-            Menu
-          </button>
-          <div class="mobile-menu-panel" id="mobileMenuPanel" hidden>
-            <button class="mobile-menu-item" id="mobileHomeBtn" type="button">
+
+          <div class="top-actions d-none d-lg-flex">
+            <button class="btn btn-light ghost-button" id="homeBtn" type="button" title="Home">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
               Home
             </button>
-            <button class="mobile-menu-item" id="mobileSiappHelperLink" type="button">
+            <button class="btn btn-light ghost-button" id="siappHelperLink" type="button" title="Sinkron SIAPP">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>
-              Sinkron SIAPP
+              SIAPP
             </button>
-            <button class="mobile-menu-item" id="mobileDashboardBtn" type="button" aria-controls="dashboardSection" aria-expanded="false">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3v10Z"/><path d="M13 21h8V11h-8v10Z"/><path d="M13 3h8v6h-8V3Z"/><path d="M3 21h8v-6H3v6Z"/></svg>
-              Dashboard
-            </button>
-            <button class="mobile-menu-item" id="mobileExportJsonBtn" type="button">
+            <button class="btn btn-light ghost-button" id="exportJsonBtn" type="button" title="Export JSON">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></svg>
-              Export JSON
+              JSON
             </button>
-            <button class="mobile-menu-item" id="mobileExportCsvBtn" type="button">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 6h16"/><path d="M4 10h16"/></svg>
-              Export CSV
+            <button class="btn btn-light ghost-button" id="exportCsvBtn" type="button" title="Export CSV">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></svg>
+              CSV
             </button>
-            <button class="mobile-menu-item" id="mobileImportBtn" type="button">
+            <label class="btn btn-light ghost-button file-button" title="Import JSON" for="importFile">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M5 4h14"/></svg>
-              Import JSON
+              Import
+            </label>
+          </div>
+
+          <div class="mobile-actions d-lg-none">
+            <button class="btn btn-primary mobile-menu-button" id="mobileMenuBtn" type="button" aria-expanded="false" aria-controls="mobileMenuPanel">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg>
+              Menu
             </button>
+            <div class="mobile-menu-panel dropdown-menu-end shadow" id="mobileMenuPanel" hidden>
+              <button class="mobile-menu-item" id="mobileHomeBtn" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>
+                Home
+              </button>
+              <button class="mobile-menu-item" id="mobileSiappHelperLink" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h5"/></svg>
+                Sinkron SIAPP
+              </button>
+              <button class="mobile-menu-item" id="mobileDashboardBtn" type="button" aria-controls="dashboardSection" aria-expanded="false">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3v10Z"/><path d="M13 21h8V11h-8v10Z"/><path d="M13 3h8v6h-8V3Z"/><path d="M3 21h8v-6H3v6Z"/></svg>
+                Dashboard
+              </button>
+              <button class="mobile-menu-item" id="mobileExportJsonBtn" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></svg>
+                Export JSON
+              </button>
+              <button class="mobile-menu-item" id="mobileExportCsvBtn" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 6h16"/><path d="M4 10h16"/></svg>
+                Export CSV
+              </button>
+              <button class="mobile-menu-item" id="mobileImportBtn" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M5 4h14"/></svg>
+                Import JSON
+              </button>
+            </div>
           </div>
         </div>
       </header>
+
       <input id="importFile" class="import-file-input" type="file" accept="application/json" />
 
       <main>
-        <section class="dashboard-section" id="dashboardSection" aria-label="Dashboard ringkasan data">
-          <div class="dashboard-header">
-            <div>
-              <p class="eyebrow">Dashboard</p>
-              <h2>Ringkasan Follow-up</h2>
+        <section class="dashboard-section card border-0 shadow-sm mb-3" id="dashboardSection" aria-label="Dashboard ringkasan data">
+          <div class="card-body">
+            <div class="dashboard-header d-flex align-items-start justify-content-between gap-3">
+              <div>
+                <p class="eyebrow">Dashboard</p>
+                <h2>Ringkasan Follow-up</h2>
+              </div>
             </div>
-          </div>
-          <div class="summary-grid">
-            <article class="summary-tile total">
-              <div class="summary-head">
-                <span>Total Data</span>
-                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg></span>
-              </div>
-              <strong id="totalRecords">0</strong>
-            </article>
-            <article class="summary-tile danger">
-              <div class="summary-head">
-                <span>Belum Bayar</span>
-                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span>
-              </div>
-              <strong id="unpaidRecords">0</strong>
-            </article>
-            <article class="summary-tile warning">
-              <div class="summary-head">
-                <span>Masa Pajak Lewat</span>
-                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 6v6l4 2"/><path d="M21 12a9 9 0 1 1-9-9"/><path d="M18 3v5h5"/></svg></span>
-              </div>
-              <strong id="overdueRecords">0</strong>
-            </article>
-            <article class="summary-tile info">
-              <div class="summary-head">
-                <span>Follow-up 30 Hari</span>
-                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/></svg></span>
-              </div>
-              <strong id="todayFollowUps">0</strong>
-            </article>
-            <article class="summary-tile money">
-              <div class="summary-head">
-                <span>Nominal Belum Bayar</span>
-                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/><path d="M18 17h2"/></svg></span>
-              </div>
-              <strong id="unpaidPotential">Rp0</strong>
-            </article>
-            <article class="summary-tile dl">
-              <div class="summary-head">
-                <span>DL Bulan Ini</span>
-                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18 3 21V6l6-3 6 3 6-3v15l-6 3-6-3Z"/><path d="M9 3v15"/><path d="M15 6v15"/></svg></span>
-              </div>
-              <strong id="dlMonthCount">0</strong>
-            </article>
-            <article class="summary-tile success">
-              <div class="summary-head">
-                <span>Cair Bulan Ini</span>
-                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"/></svg></span>
-              </div>
-              <strong id="paidMonthAmount">Rp0</strong>
-            </article>
-            <article class="summary-tile info">
-              <div class="summary-head">
-                <span>Efektivitas DL</span>
-                <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-7"/></svg></span>
-              </div>
-              <strong id="dlConversionRate">0%</strong>
-            </article>
-          </div>
-          <div class="dashboard-performance">
-            <section class="performance-panel">
-              <div class="performance-head">
-                <div>
-                  <p class="eyebrow">Performa Dinas Luar</p>
-                  <h3 id="dashboardMonthLabel">Bulan berjalan</h3>
+
+            <div class="row g-3 summary-grid">
+              <article class="col-12 col-sm-6 col-xl-3">
+                <div class="summary-tile total">
+                  <div class="summary-head">
+                    <span>Total Data</span>
+                    <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg></span>
+                  </div>
+                  <strong id="totalRecords">0</strong>
                 </div>
-              </div>
-              <div class="week-grid">
-                <article class="week-card">
-                  <span>Minggu 1</span>
-                  <strong id="dlWeek1Count">0 DL</strong>
-                  <small id="dlWeek1Paid">Rp0 cair</small>
-                </article>
-                <article class="week-card">
-                  <span>Minggu 2</span>
-                  <strong id="dlWeek2Count">0 DL</strong>
-                  <small id="dlWeek2Paid">Rp0 cair</small>
-                </article>
-                <article class="week-card">
-                  <span>Minggu 3</span>
-                  <strong id="dlWeek3Count">0 DL</strong>
-                  <small id="dlWeek3Paid">Rp0 cair</small>
-                </article>
-                <article class="week-card">
-                  <span>Minggu 4</span>
-                  <strong id="dlWeek4Count">0 DL</strong>
-                  <small id="dlWeek4Paid">Rp0 cair</small>
-                </article>
-              </div>
-            </section>
-            <section class="insight-panel">
-              <p class="eyebrow">Insight</p>
-              <h3>Catatan Otomatis</h3>
-              <ul id="dashboardInsights"></ul>
-            </section>
+              </article>
+              <article class="col-12 col-sm-6 col-xl-3">
+                <div class="summary-tile danger">
+                  <div class="summary-head">
+                    <span>Belum Bayar</span>
+                    <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></span>
+                  </div>
+                  <strong id="unpaidRecords">0</strong>
+                </div>
+              </article>
+              <article class="col-12 col-sm-6 col-xl-3">
+                <div class="summary-tile warning">
+                  <div class="summary-head">
+                    <span>Masa Pajak Lewat</span>
+                    <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 6v6l4 2"/><path d="M21 12a9 9 0 1 1-9-9"/><path d="M18 3v5h5"/></svg></span>
+                  </div>
+                  <strong id="overdueRecords">0</strong>
+                </div>
+              </article>
+              <article class="col-12 col-sm-6 col-xl-3">
+                <div class="summary-tile info">
+                  <div class="summary-head">
+                    <span>Follow-up 30 Hari</span>
+                    <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/></svg></span>
+                  </div>
+                  <strong id="todayFollowUps">0</strong>
+                </div>
+              </article>
+              <article class="col-12 col-sm-6 col-xl-3">
+                <div class="summary-tile money">
+                  <div class="summary-head">
+                    <span>Nominal Belum Bayar</span>
+                    <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/><path d="M18 17h2"/></svg></span>
+                  </div>
+                  <strong id="unpaidPotential">Rp0</strong>
+                </div>
+              </article>
+              <article class="col-12 col-sm-6 col-xl-3">
+                <div class="summary-tile dl">
+                  <div class="summary-head">
+                    <span>DL Bulan Ini</span>
+                    <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M9 18 3 21V6l6-3 6 3 6-3v15l-6 3-6-3Z"/><path d="M9 3v15"/><path d="M15 6v15"/></svg></span>
+                  </div>
+                  <strong id="dlMonthCount">0</strong>
+                </div>
+              </article>
+              <article class="col-12 col-sm-6 col-xl-3">
+                <div class="summary-tile success">
+                  <div class="summary-head">
+                    <span>Cair Bulan Ini</span>
+                    <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+                  </div>
+                  <strong id="paidMonthAmount">Rp0</strong>
+                </div>
+              </article>
+              <article class="col-12 col-sm-6 col-xl-3">
+                <div class="summary-tile info">
+                  <div class="summary-head">
+                    <span>Efektivitas DL</span>
+                    <span class="summary-icon" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-7"/></svg></span>
+                  </div>
+                  <strong id="dlConversionRate">0%</strong>
+                </div>
+              </article>
+            </div>
+
+            <div class="row g-3 mt-1 dashboard-performance">
+              <section class="col-12 col-xl-8">
+                <div class="performance-panel h-100">
+                  <div class="performance-head">
+                    <div>
+                      <p class="eyebrow">Performa Dinas Luar</p>
+                      <h3 id="dashboardMonthLabel">Bulan berjalan</h3>
+                    </div>
+                  </div>
+                  <div class="row g-2 week-grid">
+                    <article class="col-12 col-sm-6 col-xl-3">
+                      <div class="week-card">
+                        <span>Minggu 1</span>
+                        <strong id="dlWeek1Count">0 DL</strong>
+                        <small id="dlWeek1Paid">Rp0 cair</small>
+                      </div>
+                    </article>
+                    <article class="col-12 col-sm-6 col-xl-3">
+                      <div class="week-card">
+                        <span>Minggu 2</span>
+                        <strong id="dlWeek2Count">0 DL</strong>
+                        <small id="dlWeek2Paid">Rp0 cair</small>
+                      </div>
+                    </article>
+                    <article class="col-12 col-sm-6 col-xl-3">
+                      <div class="week-card">
+                        <span>Minggu 3</span>
+                        <strong id="dlWeek3Count">0 DL</strong>
+                        <small id="dlWeek3Paid">Rp0 cair</small>
+                      </div>
+                    </article>
+                    <article class="col-12 col-sm-6 col-xl-3">
+                      <div class="week-card">
+                        <span>Minggu 4</span>
+                        <strong id="dlWeek4Count">0 DL</strong>
+                        <small id="dlWeek4Paid">Rp0 cair</small>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+              </section>
+              <section class="col-12 col-xl-4">
+                <div class="insight-panel h-100">
+                  <p class="eyebrow">Insight</p>
+                  <h3>Catatan Otomatis</h3>
+                  <ul id="dashboardInsights"></ul>
+                </div>
+              </section>
+            </div>
           </div>
         </section>
 
-        <section class="workspace">
-          <form class="entry-panel" id="taxpayerForm">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Input Data</p>
-                <h2 id="formTitle">Tambah Wajib Pajak</h2>
-              </div>
-              <div class="panel-actions">
-                <button class="icon-button form-toggle-btn" id="toggleFormBtn" type="button" title="Lipat form input" aria-label="Lipat form input" aria-expanded="true" aria-controls="formBody">
-                  <svg class="icon collapse-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
-                </button>
-              </div>
-            </div>
+        <section class="workspace row g-3 align-items-start">
+          <form class="entry-panel col-12 col-xl-4" id="taxpayerForm">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="panel-heading d-flex align-items-start justify-content-between gap-3">
+                  <div>
+                    <p class="eyebrow">Input Data</p>
+                    <h2 id="formTitle">Tambah Wajib Pajak</h2>
+                  </div>
+                  <button class="btn btn-outline-secondary icon-button form-toggle-btn" id="toggleFormBtn" type="button" title="Lipat form input" aria-label="Lipat form input" aria-expanded="true" aria-controls="formBody">
+                    <svg class="icon collapse-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 15 6-6 6 6"/></svg>
+                  </button>
+                </div>
 
-            <input id="recordId" type="hidden" />
-            <input id="status" type="hidden" value="Belum bayar" />
-            <input id="letterType" type="hidden" />
-            <input id="taxValidDate" type="hidden" />
-            <input id="ownerName" type="hidden" />
-            <input id="taxPotential" type="hidden" />
+                <input id="recordId" type="hidden" />
+                <input id="status" type="hidden" value="Belum bayar" />
+                <input id="letterType" type="hidden" />
+                <input id="taxValidDate" type="hidden" />
+                <input id="ownerName" type="hidden" />
+                <input id="taxPotential" type="hidden" />
 
-            <div class="form-body" id="formBody">
-              <div class="form-grid">
-                <label class="wide-field">
-                  <span>No Polisi</span>
-                  <input id="plateNumber" type="text" autocomplete="off" placeholder="L 1234 AB" />
-                  <span class="duplicate-check" id="duplicateCheckResult"></span>
-                  <span class="production-check" id="productionCheckResult"></span>
-                </label>
-                <label class="wide-field">
-                  <span>No Whatsapp</span>
-                  <div class="phone-control">
-                    <span class="phone-prefix">+62</span>
-                    <input id="phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="81234567890" />
+                <div class="form-body" id="formBody">
+                  <div class="row g-3 form-grid">
+                    <label class="col-12">
+                      <span class="form-label">No Polisi</span>
+                      <input class="form-control" id="plateNumber" type="text" autocomplete="off" placeholder="L 1234 AB" />
+                      <span class="duplicate-check" id="duplicateCheckResult"></span>
+                      <span class="production-check" id="productionCheckResult"></span>
+                    </label>
+                    <label class="col-12">
+                      <span class="form-label">No Whatsapp</span>
+                      <div class="input-group phone-control">
+                        <span class="input-group-text phone-prefix">+62</span>
+                        <input class="form-control" id="phone" type="tel" inputmode="numeric" autocomplete="off" placeholder="81234567890" />
+                      </div>
+                    </label>
+                    <label class="col-12 col-md-6">
+                      <span class="form-label">Tgl Dinas Luar</span>
+                      <input class="form-control" id="fieldVisitDate" type="text" inputmode="numeric" autocomplete="off" placeholder="08072026" />
+                    </label>
+                    <label class="col-12">
+                      <span class="form-label">Keterangan DL</span>
+                      <textarea class="form-control" id="fieldVisitNote" rows="2" placeholder="WP LUPA / JANJI BAYAR / RUMAH KOSONG"></textarea>
+                    </label>
+                    <div class="col-12">
+                      <div class="siapp-autofill-panel" id="siappAutofillPanel" aria-live="polite">
+                        <div>
+                          <span>Jenis Surat</span>
+                          <strong id="autoLetterType">-</strong>
+                        </div>
+                        <div>
+                          <span>Nama Wajib Pajak</span>
+                          <strong id="autoOwnerName">-</strong>
+                        </div>
+                        <div>
+                          <span>Masa Pajak</span>
+                          <strong id="autoTaxValidDate">-</strong>
+                        </div>
+                        <div>
+                          <span>Nominal</span>
+                          <strong id="autoTaxPotential">-</strong>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </label>
-                <label>
-                  <span>Tgl Dinas Luar</span>
-                  <input id="fieldVisitDate" type="text" inputmode="numeric" autocomplete="off" placeholder="08072026" />
-                </label>
-                <label class="wide-field">
-                  <span>Keterangan DL</span>
-                  <textarea id="fieldVisitNote" rows="2" placeholder="WP LUPA / JANJI BAYAR / RUMAH KOSONG"></textarea>
-                </label>
-                <div class="siapp-autofill-panel wide-field" id="siappAutofillPanel" aria-live="polite">
-                  <div>
-                    <span>Jenis Surat</span>
-                    <strong id="autoLetterType">-</strong>
+
+                  <div class="d-grid mt-3">
+                    <button class="btn btn-primary primary-button" type="submit">
+                      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                      Simpan Data
+                    </button>
                   </div>
-                  <div>
-                    <span>Nama Wajib Pajak</span>
-                    <strong id="autoOwnerName">-</strong>
-                  </div>
-                  <div>
-                    <span>Masa Pajak</span>
-                    <strong id="autoTaxValidDate">-</strong>
-                  </div>
-                  <div>
-                    <span>Nominal</span>
-                    <strong id="autoTaxPotential">-</strong>
-                  </div>
+                  <p class="privacy-note">Isi No Polisi terlebih dahulu. Nama, masa pajak, jenis surat, dan nominal otomatis dari SIAPP. Tgl Dinas Luar dan keterangan boleh diisi atau dikosongkan.</p>
                 </div>
               </div>
-
-              <div class="form-actions">
-                <button class="primary-button" type="submit">
-                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
-                  Simpan Data
-                </button>
-              </div>
-              <p class="privacy-note">Isi No Polisi terlebih dahulu. Nama, masa pajak, jenis surat, dan nominal otomatis dari SIAPP. Tgl Dinas Luar dan keterangan boleh diisi atau dikosongkan.</p>
             </div>
           </form>
 
-          <section class="list-panel">
-            <div class="panel-heading list-heading">
-              <div>
-                <p class="eyebrow">Daftar Prioritas</p>
-                <h2>Data Follow-up</h2>
+          <section class="list-panel col-12 col-xl-8">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="panel-heading list-heading d-flex align-items-start justify-content-between gap-3">
+                  <div>
+                    <p class="eyebrow">Daftar Prioritas</p>
+                    <h2>Data Follow-up</h2>
+                  </div>
+                  <button class="btn btn-outline-danger danger-button" id="clearAllBtn" type="button">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                    Hapus Semua
+                  </button>
+                </div>
+
+                <div class="row g-3 filters" aria-label="Filter data">
+                  <label class="col-12 col-lg-4">
+                    <span class="form-label">Cari</span>
+                    <input class="form-control" id="searchInput" type="search" placeholder="Nama, nopol, jenis surat, WhatsApp, keterangan" />
+                  </label>
+                  <label class="col-12 col-sm-6 col-lg-3">
+                    <span class="form-label">Status SIAPP</span>
+                    <select class="form-select" id="statusFilter">
+                      <option value="all">Semua pembayaran</option>
+                      <option value="siappUnpaid">Belum lunas SIAPP</option>
+                      <option value="siappPaid">Sudah lunas SIAPP</option>
+                      <option value="siappMissing">Belum tersinkron SIAPP</option>
+                    </select>
+                  </label>
+                  <label class="col-12 col-sm-6 col-lg-3">
+                    <span class="form-label">Kategori Follow-up</span>
+                    <select class="form-select" id="dateFilter">
+                      <option value="all">Semua kategori</option>
+                      <option value="needsAction">Harus segera follow up</option>
+                      <option value="critical">Merah - muncul/lewat</option>
+                      <option value="urgent">Kuning - 7 hari</option>
+                      <option value="soon">Biru - 30 hari</option>
+                      <option value="waiting">Abu - menunggu jadwal</option>
+                      <option value="paid">Hijau - sudah bayar</option>
+                    </select>
+                  </label>
+                  <label class="col-12 col-lg-2">
+                    <span class="form-label">Dinas Luar</span>
+                    <select class="form-select" id="dlFilter">
+                      <option value="all">Semua DL</option>
+                      <option value="dlThisMonth">DL bulan berjalan</option>
+                      <option value="dlWeek1">Minggu 1 bulan berjalan</option>
+                      <option value="dlWeek2">Minggu 2 bulan berjalan</option>
+                      <option value="dlWeek3">Minggu 3 bulan berjalan</option>
+                      <option value="dlWeek4">Minggu 4 bulan berjalan</option>
+                      <option value="dlPaidThisMonth">Sudah cair bulan berjalan</option>
+                      <option value="dlUnpaidThisMonth">Belum cair setelah DL</option>
+                      <option value="noDl">Belum ada tanggal DL</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div class="cards-wrap mt-3">
+                  <div class="records-grid" id="recordsTable" aria-label="Daftar kartu wajib pajak"></div>
+                </div>
+
+                <div class="empty-state" id="emptyState">
+                  <svg class="empty-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+                  <h3>Belum ada data</h3>
+                  <p>Tambahkan data wajib pajak potensial dari form di sebelah kiri.</p>
+                </div>
               </div>
-              <button class="danger-button" id="clearAllBtn" type="button">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
-                Hapus Semua
-              </button>
-            </div>
-
-            <div class="filters" aria-label="Filter data">
-              <label class="search-box">
-                <span>Cari</span>
-                <input id="searchInput" type="search" placeholder="Nama, nopol, jenis surat, WhatsApp, keterangan" />
-              </label>
-              <label>
-                <span>Status SIAPP</span>
-                <select id="statusFilter">
-                  <option value="all">Semua pembayaran</option>
-                  <option value="siappUnpaid">Belum lunas SIAPP</option>
-                  <option value="siappPaid">Sudah lunas SIAPP</option>
-                  <option value="siappMissing">Belum tersinkron SIAPP</option>
-                </select>
-              </label>
-              <label>
-                <span>Kategori Follow-up</span>
-                <select id="dateFilter">
-                  <option value="all">Semua kategori</option>
-                  <option value="needsAction">Harus segera follow up</option>
-                  <option value="critical">Merah - muncul/lewat</option>
-                  <option value="urgent">Kuning - 7 hari</option>
-                  <option value="soon">Biru - 30 hari</option>
-                  <option value="waiting">Abu - menunggu jadwal</option>
-                  <option value="paid">Hijau - sudah bayar</option>
-                </select>
-              </label>
-              <label>
-                <span>Filter Dinas Luar</span>
-                <select id="dlFilter">
-                  <option value="all">Semua DL</option>
-                  <option value="dlThisMonth">DL bulan berjalan</option>
-                  <option value="dlWeek1">Minggu 1 bulan berjalan</option>
-                  <option value="dlWeek2">Minggu 2 bulan berjalan</option>
-                  <option value="dlWeek3">Minggu 3 bulan berjalan</option>
-                  <option value="dlWeek4">Minggu 4 bulan berjalan</option>
-                  <option value="dlPaidThisMonth">Sudah cair bulan berjalan</option>
-                  <option value="dlUnpaidThisMonth">Belum cair setelah DL</option>
-                  <option value="noDl">Belum ada tanggal DL</option>
-                </select>
-              </label>
-            </div>
-
-            <div class="cards-wrap">
-              <div class="records-grid" id="recordsTable" aria-label="Daftar kartu wajib pajak"></div>
-            </div>
-
-            <div class="empty-state" id="emptyState">
-              <svg class="empty-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
-              <h3>Belum ada data</h3>
-              <p>Tambahkan data wajib pajak potensial dari form di sebelah kiri.</p>
             </div>
           </section>
         </section>
@@ -323,47 +369,49 @@
     </div>
 
     <template id="rowTemplate">
-      <article class="record-card" tabindex="0" role="button">
-        <div class="card-head">
-          <span class="badge letter-badge"></span>
-          <span class="card-priority-text"></span>
-        </div>
-        <div class="card-money-block">
-          <span>Nominal</span>
-          <strong class="card-money"></strong>
-        </div>
-        <div class="card-followup">
-          <span class="card-label">Surat segera</span>
-          <div class="card-followup-main">
-            <strong class="card-next-letter"></strong>
-            <span class="card-next-date"></span>
+      <article class="record-card card h-100" tabindex="0" role="button">
+        <div class="card-body">
+          <div class="card-head">
+            <span class="badge letter-badge"></span>
+            <span class="card-priority-text"></span>
           </div>
-          <span class="card-warning"></span>
-        </div>
-        <div class="card-foot">
-          <strong class="plate-text"></strong>
-          <span class="owner-name"></span>
-        </div>
-        <span class="card-production"></span>
-        <span class="card-dl-info"></span>
-        <div class="card-actions">
-          <button class="siapp-check-btn" type="button">
-            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-            <span class="siapp-check-label">Cek SIAPP</span>
-          </button>
+          <div class="card-money-block">
+            <span>Nominal</span>
+            <strong class="card-money"></strong>
+          </div>
+          <div class="card-followup">
+            <span class="card-label">Surat segera</span>
+            <div class="card-followup-main">
+              <strong class="card-next-letter"></strong>
+              <span class="card-next-date"></span>
+            </div>
+            <span class="card-warning"></span>
+          </div>
+          <div class="card-foot">
+            <strong class="plate-text"></strong>
+            <span class="owner-name"></span>
+          </div>
+          <span class="card-production"></span>
+          <span class="card-dl-info"></span>
+          <div class="card-actions">
+            <button class="btn siapp-check-btn" type="button">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              <span class="siapp-check-label">Cek SIAPP</span>
+            </button>
+          </div>
         </div>
       </article>
     </template>
 
     <div class="detail-overlay" id="detailOverlay" hidden>
-      <section class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+      <section class="detail-panel modal-card" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
         <div class="detail-top">
           <div>
             <p class="eyebrow">Detail Wajib Pajak</p>
             <h2 id="detailTitle">Data Wajib Pajak</h2>
             <p class="detail-subtitle" id="detailSubtitle"></p>
           </div>
-          <button class="icon-button" id="detailCloseBtn" type="button" title="Tutup detail" aria-label="Tutup detail">
+          <button class="btn btn-outline-secondary icon-button" id="detailCloseBtn" type="button" title="Tutup detail" aria-label="Tutup detail">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
@@ -379,7 +427,7 @@
             <h2 id="siappTitle">Sinkron SIAPP</h2>
             <p class="detail-subtitle">Pasang atau copy bookmark sinkron tanpa membuka halaman baru.</p>
           </div>
-          <button class="icon-button" id="siappCloseBtn" type="button" title="Tutup" aria-label="Tutup">
+          <button class="btn btn-outline-secondary icon-button" id="siappCloseBtn" type="button" title="Tutup" aria-label="Tutup">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
         </div>
@@ -389,6 +437,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="config.js"></script>
-    <script src="app.js?v=20260708-1620"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="app.js?v=20260708-1900"></script>
   </body>
 </html>

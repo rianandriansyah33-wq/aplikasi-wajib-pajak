@@ -2129,7 +2129,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260708-1620";
+    const helperSrc = "siapp-helper.html?v=20260708-1900";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }
