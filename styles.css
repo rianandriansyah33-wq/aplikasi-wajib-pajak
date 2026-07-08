@@ -474,6 +474,36 @@ h3 {
   color: var(--app-success);
 }
 
+.siapp-monitor-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .9rem;
+  margin-top: .9rem;
+  padding: .9rem;
+  border: 1px solid #cfe8df;
+  border-radius: .9rem;
+  background: linear-gradient(135deg, #f4fbf8 0, #f8fafc 100%);
+}
+
+.siapp-monitor-card div {
+  display: grid;
+  gap: .18rem;
+  min-width: 0;
+}
+
+.siapp-monitor-card strong {
+  color: var(--app-text);
+  font-size: 1.05rem;
+  font-weight: 950;
+}
+
+.siapp-monitor-card span {
+  color: var(--app-muted);
+  font-size: .78rem;
+  font-weight: 750;
+}
+
 .performance-panel,
 .insight-panel {
   padding: 1rem;
@@ -1435,6 +1465,36 @@ textarea.form-control {
   gap: .65rem;
 }
 
+.helper-control-panel {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: .75rem;
+  padding: .8rem;
+  border: 1px solid #dfe8f3;
+  border-radius: .85rem;
+  background: #f8fafc;
+}
+
+.helper-control-panel label {
+  display: grid;
+  gap: .35rem;
+  min-width: min(18rem, 100%);
+}
+
+.helper-control-panel span {
+  color: var(--app-muted);
+  font-size: .72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.helper-open-siapp {
+  min-height: 2.65rem;
+  padding: 0 1rem;
+  border-radius: .75rem;
+}
+
 .helper-actions a {
   min-height: 2.65rem;
   padding: 0 1rem;
@@ -1611,6 +1671,12 @@ textarea.form-control {
 
   .records-grid {
     grid-template-columns: 1fr;
+  }
+
+  .siapp-monitor-card,
+  .helper-control-panel {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .detail-overlay {

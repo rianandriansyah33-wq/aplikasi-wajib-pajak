@@ -55,6 +55,7 @@ const controls = {
   autoTaxPotential: document.querySelector("#autoTaxPotential"),
   syncStatus: document.querySelector("#syncStatus"),
   dashboardSection: document.querySelector("#dashboardSection"),
+  dashboardSiappBtn: document.querySelector("#dashboardSiappBtn"),
   listPanel: document.querySelector(".list-panel"),
   toggleDashboardBtn: document.querySelector("#toggleDashboardBtn"),
   toggleListBtn: document.querySelector("#toggleListBtn"),
@@ -86,6 +87,8 @@ const summary = {
   dlMonthCount: document.querySelector("#dlMonthCount"),
   paidMonthAmount: document.querySelector("#paidMonthAmount"),
   dlConversionRate: document.querySelector("#dlConversionRate"),
+  siappReferenceCount: document.querySelector("#siappReferenceCount"),
+  siappLastSync: document.querySelector("#siappLastSync"),
   dashboardMonthLabel: document.querySelector("#dashboardMonthLabel"),
   dashboardInsights: document.querySelector("#dashboardInsights"),
   dlWeekCounts: [
@@ -469,6 +472,20 @@ function formatDate(value) {
     String(date.getMonth() + 1).padStart(2, "0"),
     date.getFullYear()
   ].join("/");
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (!date || Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "Asia/Jakarta",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
 }
 
 function dateToIso(date) {
@@ -1004,15 +1021,37 @@ function getProductionPeriodLabel(record) {
   return (monthNames[Number(record.month)] || "Bulan") + " " + (record.year || "");
 }
 
+function getLatestProductionUpdate() {
+  return productionRecords
+    .map(function (record) {
+      return String(record.updatedAt || "");
+    })
+    .filter(Boolean)
+    .sort()
+    .pop() || "";
+}
+
 function updateProductionSummary() {
-  if (!controls.productionSummary) return;
   const paidCount = productionRecords.filter(function (record) {
     return record.isPaid;
   }).length;
   const unpaidCount = productionRecords.length - paidCount;
-  controls.productionSummary.textContent = productionRecords.length
+  const latestUpdate = getLatestProductionUpdate();
+  const summaryText = productionRecords.length
     ? productionRecords.length + " nopol referensi tersimpan. " + paidCount + " lunas, " + unpaidCount + " belum lunas."
     : "Belum ada data referensi.";
+
+  if (controls.productionSummary) controls.productionSummary.textContent = summaryText;
+  if (summary.siappReferenceCount) {
+    summary.siappReferenceCount.textContent = productionRecords.length
+      ? productionRecords.length + " data SIAPP"
+      : "0 data SIAPP";
+  }
+  if (summary.siappLastSync) {
+    summary.siappLastSync.textContent = latestUpdate
+      ? "Terakhir masuk: " + formatDateTime(latestUpdate) + " WIB. " + paidCount + " lunas, " + unpaidCount + " belum lunas."
+      : "Belum ada data SIAPP tersimpan";
+  }
 }
 
 function updateProductionCheckPreview() {
@@ -1807,6 +1846,7 @@ async function checkRecordAgainstSiapp(recordId) {
 
 function render() {
   updateSummary();
+  updateProductionSummary();
   tableBody.replaceChildren();
   const filtered = getFilteredRecords();
   emptyState.style.display = filtered.length ? "none" : "block";
@@ -2133,7 +2173,7 @@ function toggleMobileDashboard() {
 function openSiappModal() {
   if (!controls.siappOverlay) return;
   if (controls.siappFrame) {
-    const helperSrc = "siapp-helper.html?v=20260708-2120";
+    const helperSrc = "siapp-helper.html?v=20260708-2140";
     if (!controls.siappFrame.src || !controls.siappFrame.src.includes(helperSrc)) {
       controls.siappFrame.src = helperSrc;
     }
@@ -2371,6 +2411,10 @@ if (controls.mobileHomeBtn) {
 
 if (controls.siappHelperLink) {
   controls.siappHelperLink.addEventListener("click", openSiappModal);
+}
+
+if (controls.dashboardSiappBtn) {
+  controls.dashboardSiappBtn.addEventListener("click", openSiappModal);
 }
 
 if (controls.mobileSiappHelperLink) {

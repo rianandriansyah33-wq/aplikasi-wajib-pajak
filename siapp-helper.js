@@ -3,6 +3,7 @@
   const watchBookmarkletLink = document.querySelector("#watchBookmarkletLink");
   const fullBookmarkletLink = document.querySelector("#fullBookmarkletLink");
   const copyButton = document.querySelector("#copyBookmarkletBtn");
+  const watchIntervalSelect = document.querySelector("#watchIntervalSelect");
   const statusText = document.querySelector("#helperStatus");
   const googleScriptUrl = window.APP_CONFIG && window.APP_CONFIG.GOOGLE_SCRIPT_URL;
   const syncScriptUrl = new URL("siapp-sync.js", window.location.href).href;
@@ -11,12 +12,22 @@
     if (statusText) statusText.textContent = message;
   }
 
+  function getWatchIntervalMs() {
+    const value = Number(watchIntervalSelect && watchIntervalSelect.value);
+    return value || 300000;
+  }
+
+  function getWatchIntervalLabel() {
+    const minutes = Math.max(1, Math.round(getWatchIntervalMs() / 60000));
+    return minutes + " menit";
+  }
+
   function buildBookmarklet(mode) {
     const config = {
       googleScriptUrl: googleScriptUrl,
       syncScriptUrl: syncScriptUrl,
       syncMode: mode || "quick",
-      watchIntervalMs: 60000
+      watchIntervalMs: getWatchIntervalMs()
     };
     const source = [
       "(function(){",
@@ -34,6 +45,20 @@
     return "javascript:" + source;
   }
 
+  function updateBookmarklets() {
+    const quickBookmarklet = buildBookmarklet("quick");
+    const watchBookmarklet = buildBookmarklet("watch");
+    const fullBookmarklet = buildBookmarklet("full");
+    if (bookmarkletLink) bookmarkletLink.href = quickBookmarklet;
+    if (watchBookmarkletLink) {
+      watchBookmarkletLink.href = watchBookmarklet;
+      watchBookmarkletLink.textContent = "Pantau " + getWatchIntervalLabel();
+    }
+    if (fullBookmarkletLink) fullBookmarkletLink.href = fullBookmarklet;
+    showStatus("Tombol siap dipasang. Pantau Otomatis akan cek SIAPP tiap " + getWatchIntervalLabel() + ".");
+    return { quickBookmarklet: quickBookmarklet, watchBookmarklet: watchBookmarklet, fullBookmarklet: fullBookmarklet };
+  }
+
   if (!googleScriptUrl) {
     showStatus("URL Google Apps Script belum terisi di config.js.");
     if (bookmarkletLink) bookmarkletLink.removeAttribute("href");
@@ -43,18 +68,18 @@
     return;
   }
 
-  const quickBookmarklet = buildBookmarklet("quick");
-  const watchBookmarklet = buildBookmarklet("watch");
-  const fullBookmarklet = buildBookmarklet("full");
-  if (bookmarkletLink) bookmarkletLink.href = quickBookmarklet;
-  if (watchBookmarkletLink) watchBookmarkletLink.href = watchBookmarklet;
-  if (fullBookmarkletLink) fullBookmarkletLink.href = fullBookmarklet;
-  showStatus("Tombol siap dipasang. Sinkron Cepat membaca SPOS, NPP, dan NTP bulan berjalan sekaligus.");
+  let bookmarklets = updateBookmarklets();
+
+  if (watchIntervalSelect) {
+    watchIntervalSelect.addEventListener("change", function () {
+      bookmarklets = updateBookmarklets();
+    });
+  }
 
   if (copyButton) {
     copyButton.addEventListener("click", async function () {
       try {
-        await navigator.clipboard.writeText(quickBookmarklet);
+        await navigator.clipboard.writeText(bookmarklets.quickBookmarklet);
         showStatus("Kode Sinkron Cepat berhasil dicopy. Buat bookmark baru lalu tempel di kolom URL.");
       } catch (error) {
         showStatus("Gagal copy otomatis. Tarik tombol Sinkron Cepat ke bookmark bar.");
