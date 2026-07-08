@@ -687,7 +687,7 @@ textarea.form-control {
 }
 
 .cards-wrap {
-  min-height: 15rem;
+  min-height: 24rem;
 }
 
 .cards-wrap::-webkit-scrollbar {
@@ -706,15 +706,15 @@ textarea.form-control {
 
 .records-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
-  gap: .85rem;
+  grid-template-columns: repeat(auto-fill, minmax(13.4rem, 1fr));
+  gap: .65rem;
 }
 
 .record-card {
-  min-height: 14rem;
+  min-height: 11.4rem;
   border: 1px solid var(--app-line);
-  border-left: .4rem solid #cbd5e1;
-  border-radius: .95rem;
+  border-left: .32rem solid #cbd5e1;
+  border-radius: .82rem;
   cursor: pointer;
   overflow: hidden;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
@@ -723,8 +723,8 @@ textarea.form-control {
 .record-card > .card-body {
   display: grid;
   grid-template-rows: auto auto 1fr auto auto auto;
-  gap: .7rem;
-  padding: .9rem;
+  gap: .5rem;
+  padding: .68rem;
 }
 
 .record-card:hover {
@@ -767,32 +767,32 @@ textarea.form-control {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: .5rem;
+  gap: .38rem;
   min-width: 0;
 }
 
 .letter-badge {
-  min-height: 1.65rem;
+  min-height: 1.38rem;
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
   background: var(--app-primary-soft);
   color: var(--app-primary);
-  font-size: .75rem;
+  font-size: .68rem;
 }
 
 .card-priority-text {
   flex: 0 0 auto;
-  max-width: 6rem;
-  min-height: 1.55rem;
+  max-width: 5.4rem;
+  min-height: 1.35rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 .55rem;
+  padding: 0 .45rem;
   border-radius: 999px;
   background: #eef2f6;
   color: #526071;
-  font-size: .65rem;
+  font-size: .58rem;
   font-weight: 950;
   line-height: 1.1;
   text-align: center;
@@ -821,20 +821,20 @@ textarea.form-control {
 
 .card-money-block {
   display: grid;
-  gap: .2rem;
+  gap: .1rem;
 }
 
 .card-money-block span,
 .card-label {
   color: var(--app-muted);
-  font-size: .7rem;
+  font-size: .62rem;
   font-weight: 900;
   text-transform: uppercase;
 }
 
 .card-money {
   color: var(--app-text);
-  font-size: clamp(1.2rem, 2.4vw, 1.45rem);
+  font-size: clamp(1.03rem, 1.8vw, 1.18rem);
   line-height: 1.05;
   white-space: nowrap;
 }
@@ -842,10 +842,10 @@ textarea.form-control {
 .card-followup {
   display: grid;
   align-content: start;
-  gap: .55rem;
+  gap: .42rem;
   min-width: 0;
-  min-height: 6.5rem;
-  padding: .7rem;
+  min-height: 5rem;
+  padding: .55rem;
   border: 1px solid #dfe8f3;
   border-radius: .75rem;
   background: linear-gradient(180deg, #fbfdff 0, #f8fafc 100%);
@@ -857,30 +857,30 @@ textarea.form-control {
 }
 
 .card-next-letter {
-  font-size: 1.45rem;
+  font-size: 1.18rem;
   line-height: 1.05;
 }
 
 .card-next-date {
   margin-left: auto;
   color: var(--app-muted);
-  font-size: .78rem;
+  font-size: .68rem;
   font-weight: 850;
   text-align: right;
   white-space: nowrap;
 }
 
 .card-warning {
-  min-height: 1.75rem;
+  min-height: 1.45rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  padding: .25rem .5rem;
+  padding: .18rem .42rem;
   border-radius: .45rem;
   background: #eef2f6;
   color: #576575;
-  font-size: .65rem;
+  font-size: .58rem;
   font-weight: 950;
   line-height: 1.15;
   text-align: center;
@@ -910,14 +910,14 @@ textarea.form-control {
 }
 
 .card-foot {
-  padding-top: .65rem;
+  padding-top: .48rem;
   border-top: 1px solid #edf1f6;
 }
 
 .record-card .owner-name {
   min-width: 0;
   color: var(--app-muted);
-  font-size: .78rem;
+  font-size: .68rem;
   overflow: hidden;
   text-align: right;
   text-overflow: ellipsis;
@@ -927,12 +927,12 @@ textarea.form-control {
 .record-card .plate-text {
   flex: 0 0 auto;
   max-width: 50%;
-  padding: .18rem .5rem;
+  padding: .12rem .42rem;
   border: 1px solid var(--app-line);
   border-radius: .5rem;
   background: #f8fafc;
   color: var(--app-text);
-  font-size: .9rem;
+  font-size: .76rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1483,7 +1483,7 @@ textarea.form-control {
 
 @media (min-width: 992px) {
   .list-panel > .card {
-    max-height: calc(100vh - 5.5rem);
+    max-height: calc(100vh - 4.15rem);
   }
 
   .list-panel > .card > .card-body {
@@ -1500,7 +1500,7 @@ textarea.form-control {
   }
 
   .cards-wrap {
-    max-height: clamp(23rem, calc(100vh - 23rem), 42rem);
+    max-height: clamp(32rem, calc(100vh - 15rem), 58rem);
     overflow-y: auto;
     padding-right: .35rem;
     overscroll-behavior: contain;
