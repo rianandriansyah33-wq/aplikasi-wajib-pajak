@@ -3,6 +3,8 @@
   const googleScriptUrl = config.googleScriptUrl || "";
   const syncMode = config.syncMode === "full" ? "full" : config.syncMode === "watch" ? "watch" : "quick";
   const watchIntervalMs = Number(config.watchIntervalMs) || 60000;
+  const quickLookbackMonths = Math.max(1, Math.min(6, Number(config.quickLookbackMonths) || 3));
+  const endpointPerPageSize = Math.max(100, Math.min(2000, Number(config.endpointPerPageSize) || 1000));
   const jasaRaharjaRoda4 = 143000;
   const dendaRoda4Per3Bulan = 35000;
   const letterOrder = ["SPOS", "NPP", "NTP"];
@@ -431,6 +433,23 @@
     });
   }
 
+  function getPaginationPageNumbers(root) {
+    const pagesByNumber = {};
+    Array.from(root.querySelectorAll("a, button, li, span")).forEach(function (element) {
+      const text = normalizeText(element.textContent);
+      if (!/^\d+$/.test(text)) return;
+      if (element.closest("table")) return;
+      if (root === document && !isVisible(element)) return;
+
+      const pageNumber = Number(text);
+      if (pageNumber > 1 && pageNumber < 1000) pagesByNumber[pageNumber] = true;
+    });
+
+    return Object.keys(pagesByNumber).map(Number).sort(function (first, second) {
+      return first - second;
+    });
+  }
+
   async function fetchDocument(url, options) {
     const response = await fetch(url, Object.assign({
       credentials: "include"
@@ -477,15 +496,23 @@
     return String(month).padStart(2, "0");
   }
 
-  function buildEndpointPayload(filter) {
+  function getEndpointPerPageValue(filter) {
+    const fallbackValue = Number(filter && filter.perPageValue) || 100;
+    return Math.max(fallbackValue, endpointPerPageSize);
+  }
+
+  function buildEndpointPayload(filter, extraPayload) {
     const data = new URLSearchParams();
     data.set("bulan", getEndpointMonthValue(filter));
     data.set("tahun", String(filter.year || filter.yearLabel || new Date().getFullYear()));
-    data.set("page", String(filter.perPageValue || 100));
+    data.set("page", String(getEndpointPerPageValue(filter)));
+    Object.keys(extraPayload || {}).forEach(function (key) {
+      data.set(key, String(extraPayload[key]));
+    });
     return data;
   }
 
-  async function fetchDirectEndpointDocument(target, filter, sourceDocument) {
+  async function fetchDirectEndpointDocument(target, filter, sourceDocument, extraPayload) {
     const endpointUrl = findDirectEndpointUrl(sourceDocument, target.letterType, target.url);
     if (!endpointUrl) return null;
 
@@ -496,7 +523,7 @@
         "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
         "X-Requested-With": "XMLHttpRequest"
       },
-      body: buildEndpointPayload(filter).toString()
+      body: buildEndpointPayload(filter, extraPayload).toString()
     });
 
     if (!response.ok) return null;
@@ -505,18 +532,116 @@
     return withForcedScope(parseHtml(html, response.url || endpointUrl), target, filter);
   }
 
+  function markRecordIds(parsedPage, seenRecordIds) {
+    (parsedPage.records || []).forEach(function (record) {
+      if (record && record.id) seenRecordIds[record.id] = true;
+    });
+  }
+
+  function countNewRecordIds(parsedPage, seenRecordIds) {
+    let newCount = 0;
+    (parsedPage.records || []).forEach(function (record) {
+      if (record && record.id && !seenRecordIds[record.id]) newCount += 1;
+    });
+    return newCount;
+  }
+
+  function getEndpointPagePayloadFactories(filter) {
+    const perPage = getEndpointPerPageValue(filter);
+    return [
+      function (pageNumber) {
+        return { halaman: pageNumber };
+      },
+      function (pageNumber) {
+        return { hal: pageNumber };
+      },
+      function (pageNumber) {
+        return { page_no: pageNumber };
+      },
+      function (pageNumber) {
+        return { pageNumber: pageNumber };
+      },
+      function (pageNumber) {
+        return { p: pageNumber };
+      },
+      function (pageNumber) {
+        return { offset: (pageNumber - 1) * perPage };
+      },
+      function (pageNumber) {
+        return {
+          start: (pageNumber - 1) * perPage,
+          length: perPage
+        };
+      }
+    ];
+  }
+
+  async function collectDirectEndpointNumberedPage(target, filter, sourceDocument, pageNumber, seenRecordIds, preferredPayloadFactory) {
+    const factories = preferredPayloadFactory ? [preferredPayloadFactory] : getEndpointPagePayloadFactories(filter);
+
+    for (let factoryIndex = 0; factoryIndex < factories.length; factoryIndex += 1) {
+      const payloadFactory = factories[factoryIndex];
+      const pageDocument = await fetchDirectEndpointDocument(target, filter, sourceDocument, payloadFactory(pageNumber));
+      if (!pageDocument) continue;
+
+      const parsedPage = parseRows(pageDocument);
+      if (countNewRecordIds(parsedPage, seenRecordIds) > 0) {
+        return {
+          parsedPage: parsedPage,
+          payloadFactory: payloadFactory
+        };
+      }
+    }
+
+    return null;
+  }
+
   async function collectDirectEndpointRecords(target, filter, sourceDocument) {
-    const firstDocument = await fetchDirectEndpointDocument(target, filter, sourceDocument);
+    let firstDocument = await fetchDirectEndpointDocument(target, filter, sourceDocument);
     if (!firstDocument) return null;
 
-    const pages = [parseRows(firstDocument)];
+    const seenRecordIds = {};
+    let firstParsed = parseRows(firstDocument);
+    const fallbackPerPageValue = Number(filter.perPageValue) || 100;
+    if (!firstParsed.records.length && getEndpointPerPageValue(filter) !== fallbackPerPageValue) {
+      const fallbackDocument = await fetchDirectEndpointDocument(target, filter, sourceDocument, { page: fallbackPerPageValue });
+      if (fallbackDocument) {
+        const fallbackParsed = parseRows(fallbackDocument);
+        const hasFallbackPagination = getPaginationLinks(fallbackDocument, fallbackDocument.__siappUrl || target.url).length || getPaginationPageNumbers(fallbackDocument).length;
+        if (fallbackParsed.records.length || hasFallbackPagination) {
+          firstDocument = fallbackDocument;
+          firstParsed = fallbackParsed;
+        }
+      }
+    }
+    const pages = [firstParsed];
+    markRecordIds(firstParsed, seenRecordIds);
     const pageLinks = getPaginationLinks(firstDocument, firstDocument.__siappUrl || target.url);
+    const visitedPageNumbers = { 1: true };
 
     for (let pageIndex = 0; pageIndex < pageLinks.length; pageIndex += 1) {
       const pageLink = pageLinks[pageIndex];
       setStatus("Endpoint SIAPP - " + target.letterType + " " + filter.monthLabel + " " + filter.yearLabel + " halaman " + pageLink.page);
       const pageDocument = withForcedScope(await fetchDocument(pageLink.url), target, filter);
-      pages.push(parseRows(pageDocument));
+      const parsedPage = parseRows(pageDocument);
+      pages.push(parsedPage);
+      markRecordIds(parsedPage, seenRecordIds);
+      visitedPageNumbers[pageLink.page] = true;
+    }
+
+    const pageNumbers = getPaginationPageNumbers(firstDocument).filter(function (pageNumber) {
+      return !visitedPageNumbers[pageNumber];
+    });
+    let preferredPayloadFactory = null;
+
+    for (let pageIndex = 0; pageIndex < pageNumbers.length; pageIndex += 1) {
+      const pageNumber = pageNumbers[pageIndex];
+      setStatus("Endpoint SIAPP - " + target.letterType + " " + filter.monthLabel + " " + filter.yearLabel + " halaman " + pageNumber);
+      const numberedPage = await collectDirectEndpointNumberedPage(target, filter, sourceDocument, pageNumber, seenRecordIds, preferredPayloadFactory);
+      if (!numberedPage) continue;
+      preferredPayloadFactory = numberedPage.payloadFactory;
+      pages.push(numberedPage.parsedPage);
+      markRecordIds(numberedPage.parsedPage, seenRecordIds);
     }
 
     return mergeParsedPages(pages);
@@ -654,6 +779,47 @@
     return { month: month, year: year };
   }
 
+  function getCalendarPeriod() {
+    const currentDate = new Date();
+    return {
+      month: currentDate.getMonth() + 1,
+      year: currentDate.getFullYear()
+    };
+  }
+
+  function addMonthOffset(period, offset) {
+    const date = new Date(Number(period.year), Number(period.month) - 1 - Number(offset || 0), 1);
+    return {
+      month: date.getMonth() + 1,
+      year: date.getFullYear()
+    };
+  }
+
+  function addQuickPeriod(periods, seenPeriods, period) {
+    if (!period || !period.month || !period.year) return;
+    const key = [period.year, String(period.month).padStart(2, "0")].join("-");
+    if (seenPeriods[key]) return;
+    seenPeriods[key] = true;
+    periods.push({
+      month: Number(period.month),
+      year: Number(period.year)
+    });
+  }
+
+  function addQuickPeriodRange(periods, seenPeriods, basePeriod) {
+    for (let offset = 0; offset < quickLookbackMonths; offset += 1) {
+      addQuickPeriod(periods, seenPeriods, addMonthOffset(basePeriod, offset));
+    }
+  }
+
+  function getQuickPeriods(sourceDocument) {
+    const periods = [];
+    const seenPeriods = {};
+    addQuickPeriodRange(periods, seenPeriods, getCalendarPeriod());
+    addQuickPeriodRange(periods, seenPeriods, getQuickPeriod(sourceDocument || document));
+    return periods;
+  }
+
   function monthLabelFromNumber(month) {
     const entry = Object.keys(monthMap).find(function (name) {
       return monthMap[name] === Number(month);
@@ -661,25 +827,31 @@
     return entry || String(month);
   }
 
-  function getQuickFilterForTarget(targetDocument, sourceDocument) {
-    const period = getQuickPeriod(sourceDocument || document);
+  function getQuickFilterForTarget(targetDocument, sourceDocument, quickPeriods) {
+    const periods = Array.isArray(quickPeriods) && quickPeriods.length ? quickPeriods : getQuickPeriods(sourceDocument || document);
     const controls = getControlSet(targetDocument);
-    const monthOption = getMonthOptions(controls.monthSelect).find(function (option) {
-      return Number(option.month) === Number(period.month);
-    });
-    const yearOption = getYearOptions(controls.yearSelect).find(function (option) {
-      return Number(option.year) === Number(period.year);
-    });
+    const monthOptions = getMonthOptions(controls.monthSelect);
+    const yearOptions = getYearOptions(controls.yearSelect);
+    const perPageValue = getMaxPerPageValue(controls.perPageSelect) || "100";
 
-    return [{
-      month: period.month,
-      monthValue: monthOption ? monthOption.value : String(period.month).padStart(2, "0"),
-      monthLabel: monthOption ? monthOption.label : monthLabelFromNumber(period.month),
-      year: period.year,
-      yearValue: yearOption ? yearOption.value : String(period.year),
-      yearLabel: yearOption ? yearOption.label : String(period.year),
-      perPageValue: getMaxPerPageValue(controls.perPageSelect) || "100"
-    }];
+    return periods.map(function (period) {
+      const monthOption = monthOptions.find(function (option) {
+        return Number(option.month) === Number(period.month);
+      });
+      const yearOption = yearOptions.find(function (option) {
+        return Number(option.year) === Number(period.year);
+      });
+
+      return {
+        month: period.month,
+        monthValue: monthOption ? monthOption.value : String(period.month).padStart(2, "0"),
+        monthLabel: monthOption ? monthOption.label : monthLabelFromNumber(period.month),
+        year: period.year,
+        yearValue: yearOption ? yearOption.value : String(period.year),
+        yearLabel: yearOption ? yearOption.label : String(period.year),
+        perPageValue: perPageValue
+      };
+    });
   }
 
   async function collectFramePaginationRecords(frame, baseParsed) {
@@ -928,7 +1100,11 @@
     const settings = options || {};
     const isFullSync = syncMode === "full";
     const isWatchSync = syncMode === "watch";
-    setStatus(isFullSync ? "Menyiapkan Sinkron SIAPP lengkap..." : isWatchSync ? "Memantau SIAPP..." : "Menyiapkan Sinkron SIAPP cepat...");
+    const quickPeriods = isFullSync ? [] : getQuickPeriods(document);
+    const quickPeriodInfo = quickPeriods.map(function (period) {
+      return monthLabelFromNumber(period.month) + " " + period.year;
+    }).join(", ");
+    setStatus(isFullSync ? "Menyiapkan Sinkron SIAPP lengkap..." : isWatchSync ? "Memantau SIAPP " + quickLookbackMonths + " bulan terakhir..." : "Menyiapkan Sinkron SIAPP cepat " + quickLookbackMonths + " bulan terakhir...");
 
     if (!googleScriptUrl) {
       setStatus("URL Google Apps Script belum tersedia.", "rgb(180,35,24)");
@@ -958,14 +1134,14 @@
 
       let frame = null;
       let filterNumber = 0;
-      let totalFilters = isFullSync ? 0 : targets.length;
+      let totalFilters = isFullSync ? 0 : targets.length * quickPeriods.length;
       let totalRecords = 0;
 
       for (let targetIndex = 0; targetIndex < targets.length; targetIndex += 1) {
         const target = targets[targetIndex];
         setStatus("Membuka menu " + target.letterType + "...");
         const targetDocument = target.url === window.location.href ? document : await fetchDocument(target.url);
-        const filters = isFullSync ? getTargetFiltersFromDocument(targetDocument) : getQuickFilterForTarget(targetDocument, document);
+        const filters = isFullSync ? getTargetFiltersFromDocument(targetDocument) : getQuickFilterForTarget(targetDocument, document, quickPeriods);
         let frameLoaded = false;
         if (isFullSync) totalFilters += filters.length;
 
@@ -996,10 +1172,11 @@
       }
 
       if (isWatchSync) {
-        setStatus("Pantau aktif. Sinkron terakhir mengirim " + totalRecords + " data. Berikutnya otomatis tiap " + Math.round(watchIntervalMs / 60000) + " menit.", "rgb(22,101,52)");
+        setStatus("Pantau aktif. Sinkron terakhir mengirim " + totalRecords + " data dari " + quickPeriodInfo + ". Berikutnya otomatis tiap " + Math.round(watchIntervalMs / 60000) + " menit.", "rgb(22,101,52)");
       } else {
-        setStatus("Sinkron selesai. " + totalRecords + " data SIAPP dikirim.", "rgb(22,101,52)");
-        if (!settings.silent) alert("Sinkron SIAPP selesai. " + totalRecords + " data dikirim ke aplikasi.");
+        const finishedMessage = isFullSync ? "Sinkron selesai. " + totalRecords + " data SIAPP dikirim." : "Sinkron selesai. " + totalRecords + " data SIAPP dikirim dari " + quickPeriodInfo + ".";
+        setStatus(finishedMessage, "rgb(22,101,52)");
+        if (!settings.silent) alert(finishedMessage);
       }
     } catch (error) {
       console.error(error);
