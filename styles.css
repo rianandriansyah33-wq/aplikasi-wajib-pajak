@@ -187,6 +187,16 @@ h3 {
   color: var(--app-danger);
 }
 
+.toast.connection-success {
+  border-color: #b7e5cc;
+  background: #0f766e;
+}
+
+.toast.connection-error {
+  border-color: #fecaca;
+  background: #b42318;
+}
+
 .dashboard-controls {
   display: flex;
   align-items: flex-end;

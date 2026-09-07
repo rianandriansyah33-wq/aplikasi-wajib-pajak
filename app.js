@@ -1,7 +1,7 @@
 const STORAGE_KEY = "wajibPajakFollowUpRecords";
 const PRODUCTION_STORAGE_KEY = "wajibPajakProductionRecords";
 const PENDING_UPSERT_STORAGE_KEY = "wajibPajakPendingUpserts";
-const REMOTE_REFRESH_INTERVAL_MS = 60000;
+const REMOTE_REFRESH_INTERVAL_MS = 15000;
 const REMOTE_PRODUCTION_REFRESH_INTERVAL_MS = 300000;
 const REMOTE_RETRY_BASE_MS = 5000;
 const REMOTE_RETRY_MAX_MS = 120000;
@@ -122,6 +122,7 @@ let pendingRemoteUpserts = loadPendingRemoteUpserts();
 let remoteRetryAttempt = 0;
 let remoteRetryTimer = null;
 let lastProductionRefreshAt = 0;
+let remoteConnectionState = "unknown";
 
 function getDatabaseConfig() {
   const config = window.APP_CONFIG || {};
@@ -139,6 +140,15 @@ function updateSyncStatus(text, state) {
   controls.syncStatus.textContent = "Database: " + text;
   controls.syncStatus.classList.remove("is-online", "is-error");
   if (state) controls.syncStatus.classList.add(state);
+
+  const nextConnectionState = state === "is-online" ? "online" : (state === "is-error" ? "offline" : "connecting");
+  const wasOnline = remoteConnectionState === "online";
+  const becameOnline = nextConnectionState === "online" && !wasOnline;
+  const becameOffline = nextConnectionState === "offline" && wasOnline;
+  remoteConnectionState = nextConnectionState;
+
+  if (becameOnline) showToast("Database online tersambung.", "connection-success");
+  if (becameOffline) showToast("Koneksi database terputus. Mencoba ulang otomatis.", "connection-error");
 }
 
 function createId() {
@@ -544,7 +554,6 @@ async function initializeRemoteDatabase() {
       saveRecords();
       render();
       updateSyncStatus("Online auto-sync", "is-online");
-      showToast("Database online tersambung.");
       refreshRemoteProductionRecords({ silent: true });
       syncPendingRemoteUpserts();
       return;
@@ -654,24 +663,15 @@ function getDashboardMonthContext() {
 function updateDashboardMonthFilter() {
   if (!controls.dashboardMonthFilter) return;
   const currentValue = controls.dashboardMonthFilter.value;
-  const monthValues = new Set();
+  const currentMonth = todayIso().slice(0, 7);
+  const monthValues = new Set([currentMonth]);
   records.forEach(function (record) {
     const dateValue = record.fieldVisitDate;
     if (/^\d{4}-\d{2}-\d{2}$/.test(String(dateValue || ""))) {
       monthValues.add(String(dateValue).slice(0, 7));
     }
   });
-  if (!monthValues.size) monthValues.add(todayIso().slice(0, 7));
   const values = Array.from(monthValues).sort().reverse();
-  const signature = values.join("|");
-  const hasCompleteOptions = controls.dashboardMonthFilter.options.length === values.length &&
-    values.every(function (value) {
-      return Array.from(controls.dashboardMonthFilter.options).some(function (option) {
-        return option.value === value && Boolean(option.textContent.trim());
-      });
-    });
-  if (controls.dashboardMonthFilter.dataset.options === signature && hasCompleteOptions && controls.dashboardMonthFilter.value) return;
-
   controls.dashboardMonthFilter.replaceChildren();
   values.forEach(function (value) {
     const option = document.createElement("option");
@@ -679,10 +679,9 @@ function updateDashboardMonthFilter() {
     option.textContent = getMonthContext(value + "-01").label;
     controls.dashboardMonthFilter.append(option);
   });
-  const selectedValue = values.includes(currentValue) ? currentValue : values[0];
+  const selectedValue = values.includes(currentValue) ? currentValue : currentMonth;
   controls.dashboardMonthFilter.value = selectedValue;
   controls.dashboardMonthFilter.selectedIndex = Math.max(0, values.indexOf(selectedValue));
-  controls.dashboardMonthFilter.dataset.options = signature;
 }
 
 function isDateInMonth(dateValue, context) {
@@ -2114,12 +2113,15 @@ function statusClass(status) {
   }[status] || "status-check";
 }
 
-function showToast(message) {
+function showToast(message, tone) {
   toast.textContent = message;
+  toast.classList.remove("connection-success", "connection-error");
+  if (tone) toast.classList.add(tone);
   toast.classList.add("show");
   window.clearTimeout(showToast.timer);
   showToast.timer = window.setTimeout(function () {
     toast.classList.remove("show");
+    toast.classList.remove("connection-success", "connection-error");
   }, 2400);
 }
 
