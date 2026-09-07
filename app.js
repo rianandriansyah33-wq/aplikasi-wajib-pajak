@@ -1,6 +1,10 @@
 const STORAGE_KEY = "wajibPajakFollowUpRecords";
 const PRODUCTION_STORAGE_KEY = "wajibPajakProductionRecords";
-const REMOTE_REFRESH_INTERVAL_MS = 10000;
+const PENDING_UPSERT_STORAGE_KEY = "wajibPajakPendingUpserts";
+const REMOTE_REFRESH_INTERVAL_MS = 60000;
+const REMOTE_PRODUCTION_REFRESH_INTERVAL_MS = 300000;
+const REMOTE_RETRY_BASE_MS = 5000;
+const REMOTE_RETRY_MAX_MS = 120000;
 const REMOTE_WRITE_SETTLE_MS = 2000;
 const REMOTE_EMPTY_AFTER_WRITE_GUARD_MS = 15000;
 const JASA_RAHARJA_RODA_4 = 143000;
@@ -89,6 +93,7 @@ const summary = {
   dlConversionRate: document.querySelector("#dlConversionRate"),
   siappReferenceCount: document.querySelector("#siappReferenceCount"),
   siappLastSync: document.querySelector("#siappLastSync"),
+  dashboardMonthFilter: document.querySelector("#dashboardMonthFilter"),
   dashboardMonthLabel: document.querySelector("#dashboardMonthLabel"),
   dashboardInsights: document.querySelector("#dashboardInsights"),
   dlWeekCounts: [
@@ -107,11 +112,16 @@ const summary = {
 
 let records = loadRecords().map(normalizeRecord);
 let productionRecords = loadProductionRecords().map(normalizeProductionRecord);
+let productionRecordsByPlate = createProductionIndex(productionRecords);
 let isRemoteRefreshing = false;
 let remoteMutationCount = 0;
 let remoteAutoRefreshStarted = false;
 let lastRemoteWriteAt = 0;
 let activeDetailRecordId = "";
+let pendingRemoteUpserts = loadPendingRemoteUpserts();
+let remoteRetryAttempt = 0;
+let remoteRetryTimer = null;
+let lastProductionRefreshAt = 0;
 
 function getDatabaseConfig() {
   const config = window.APP_CONFIG || {};
@@ -162,6 +172,34 @@ function saveProductionRecords() {
   localStorage.setItem(PRODUCTION_STORAGE_KEY, JSON.stringify(productionRecords));
 }
 
+function loadPendingRemoteUpserts() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PENDING_UPSERT_STORAGE_KEY)) || [];
+    return stored.map(normalizeRecord);
+  } catch {
+    return [];
+  }
+}
+
+function savePendingRemoteUpserts() {
+  localStorage.setItem(PENDING_UPSERT_STORAGE_KEY, JSON.stringify(pendingRemoteUpserts));
+}
+
+function createProductionIndex(items) {
+  return items.reduce(function (index, record) {
+    if (!record.plateKey) return index;
+    if (!index[record.plateKey]) index[record.plateKey] = [];
+    index[record.plateKey].push(record);
+    return index;
+  }, {});
+}
+
+function setProductionRecords(items) {
+  productionRecords = items.map(normalizeProductionRecord);
+  productionRecordsByPlate = createProductionIndex(productionRecords);
+  saveProductionRecords();
+}
+
 async function requestDatabase(action, payload) {
   if (!hasRemoteDatabase()) return null;
 
@@ -169,15 +207,25 @@ async function requestDatabase(action, payload) {
     return requestDatabaseJsonp(action, payload);
   }
 
-  await fetch(databaseConfig.googleScriptUrl, {
+  const abortController = typeof AbortController === "function" ? new AbortController() : null;
+  const timeout = window.setTimeout(function () {
+    if (abortController) abortController.abort();
+  }, 12000);
+
+  try {
+    await fetch(databaseConfig.googleScriptUrl, {
     method: "POST",
     mode: "no-cors",
     redirect: "follow",
     headers: {
       "Content-Type": "text/plain;charset=utf-8"
     },
-    body: JSON.stringify(Object.assign({ action: action }, payload || {}))
-  });
+      body: JSON.stringify(Object.assign({ action: action }, payload || {})),
+      signal: abortController ? abortController.signal : undefined
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
 
   return Object.assign({ ok: true }, payload || {});
 }
@@ -290,7 +338,7 @@ function beginRemoteMutation() {
 function finishRemoteMutation() {
   window.setTimeout(function () {
     remoteMutationCount = Math.max(0, remoteMutationCount - 1);
-    refreshRemoteRecords({ silent: true });
+    refreshRemoteRecords({ silent: true, includeProduction: false });
   }, REMOTE_WRITE_SETTLE_MS);
 }
 
@@ -335,6 +383,77 @@ function shouldKeepLocalRecordsDuringRecentWrite(remoteRecords) {
   );
 }
 
+function scheduleRemoteRetry() {
+  if (!hasRemoteDatabase() || remoteRetryTimer) return;
+  const delay = Math.min(REMOTE_RETRY_BASE_MS * Math.pow(2, remoteRetryAttempt), REMOTE_RETRY_MAX_MS);
+  updateSyncStatus("Mencoba sambung lagi " + Math.ceil(delay / 1000) + " dtk", "is-error");
+  remoteRetryTimer = window.setTimeout(function () {
+    remoteRetryTimer = null;
+    refreshRemoteRecords({ silent: true, includeProduction: false });
+    syncPendingRemoteUpserts();
+  }, delay);
+  remoteRetryAttempt += 1;
+}
+
+function mergeRemoteRecordsWithPending(remoteRecords) {
+  const pendingById = new Map(pendingRemoteUpserts.map(function (record) {
+    return [record.id, record];
+  }));
+  const merged = remoteRecords.map(function (record) {
+    return pendingById.get(record.id) || record;
+  });
+  pendingRemoteUpserts.forEach(function (record) {
+    if (!remoteRecords.some(function (remoteRecord) { return remoteRecord.id === record.id; })) {
+      merged.push(record);
+    }
+  });
+  return merged;
+}
+
+function queueRemoteUpsert(record) {
+  const index = pendingRemoteUpserts.findIndex(function (item) {
+    return item.id === record.id;
+  });
+  if (index >= 0) pendingRemoteUpserts[index] = record;
+  else pendingRemoteUpserts.push(record);
+  savePendingRemoteUpserts();
+}
+
+async function syncPendingRemoteUpserts() {
+  if (!hasRemoteDatabase() || !pendingRemoteUpserts.length || isRemoteMutating()) return;
+  const items = pendingRemoteUpserts.slice();
+  try {
+    const savedRecords = await saveRemoteRecords(items);
+    const sentIds = new Set(items.map(function (item) { return item.id; }));
+    pendingRemoteUpserts = pendingRemoteUpserts.filter(function (item) {
+      return !sentIds.has(item.id);
+    });
+    savePendingRemoteUpserts();
+    mergeSavedRecords(savedRecords);
+    saveRecords();
+    remoteRetryAttempt = 0;
+    updateSyncStatus("Online auto-sync", "is-online");
+  } catch (error) {
+    console.warn("Sinkron ulang database gagal", error);
+    scheduleRemoteRetry();
+  }
+}
+
+function sendRecordInBackground(record, successMessage) {
+  if (!hasRemoteDatabase()) return;
+  queueRemoteUpsert(record);
+  if (isRemoteMutating()) {
+    scheduleRemoteRetry();
+    return;
+  }
+  syncPendingRemoteUpserts().then(function () {
+    if (!pendingRemoteUpserts.some(function (item) { return item.id === record.id; })) {
+      render();
+      if (successMessage) showToast(successMessage);
+    }
+  });
+}
+
 async function refreshRemoteRecords(options) {
   const settings = options || {};
   if (!hasRemoteDatabase() || isRemoteRefreshing || isRemoteMutating()) return;
@@ -342,34 +461,39 @@ async function refreshRemoteRecords(options) {
   isRemoteRefreshing = true;
   try {
     const remoteRecords = await fetchRemoteRecords();
-    await refreshRemoteProductionRecords();
-    if (shouldKeepLocalRecordsDuringRecentWrite(remoteRecords)) {
+    const shouldRefreshProduction = settings.includeProduction === true ||
+      (settings.includeProduction !== false && Date.now() - lastProductionRefreshAt >= REMOTE_PRODUCTION_REFRESH_INTERVAL_MS);
+    if (shouldRefreshProduction) refreshRemoteProductionRecords({ silent: true });
+    const safeRemoteRecords = mergeRemoteRecordsWithPending(remoteRecords);
+    if (shouldKeepLocalRecordsDuringRecentWrite(safeRemoteRecords)) {
       updateSyncStatus("Online auto-sync", "is-online");
       return;
     }
-    if (!areRecordCollectionsEqual(records, remoteRecords)) {
-      records = remoteRecords;
+    if (!areRecordCollectionsEqual(records, safeRemoteRecords)) {
+      records = safeRemoteRecords;
       saveRecords();
       render();
       if (!settings.silent) showToast("Data terbaru dimuat dari database.");
     }
+    remoteRetryAttempt = 0;
     updateSyncStatus("Online auto-sync", "is-online");
   } catch (error) {
     console.error(error);
     updateSyncStatus("Gagal sinkron", "is-error");
+    scheduleRemoteRetry();
     if (!settings.silent) showToast("Auto-sync gagal mengambil database.");
   } finally {
     isRemoteRefreshing = false;
   }
 }
 
-async function refreshRemoteProductionRecords() {
+async function refreshRemoteProductionRecords(options) {
   if (!hasRemoteDatabase()) return;
   try {
     const remoteProductionRecords = await fetchRemoteProductionRecords();
     if (remoteProductionRecords.length || !productionRecords.length) {
-      productionRecords = remoteProductionRecords;
-      saveProductionRecords();
+      setProductionRecords(remoteProductionRecords);
+      lastProductionRefreshAt = Date.now();
       applyProductionLetterUpdates(remoteProductionRecords);
       updateProductionSummary();
       updateProductionCheckPreview();
@@ -378,6 +502,7 @@ async function refreshRemoteProductionRecords() {
     }
   } catch (error) {
     console.warn(error);
+    scheduleRemoteRetry();
   }
 }
 
@@ -386,15 +511,19 @@ function startRemoteAutoRefresh() {
   remoteAutoRefreshStarted = true;
 
   window.setInterval(function () {
-    if (!document.hidden) refreshRemoteRecords({ silent: true });
+    if (!document.hidden) {
+      refreshRemoteRecords({ silent: true, includeProduction: false });
+      syncPendingRemoteUpserts();
+    }
   }, REMOTE_REFRESH_INTERVAL_MS);
 
   window.addEventListener("focus", function () {
-    refreshRemoteRecords({ silent: true });
+    refreshRemoteRecords({ silent: true, includeProduction: false });
+    syncPendingRemoteUpserts();
   });
 
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden) refreshRemoteRecords({ silent: true });
+    if (!document.hidden) refreshRemoteRecords({ silent: true, includeProduction: false });
   });
 }
 
@@ -406,37 +535,38 @@ async function initializeRemoteDatabase() {
   }
 
   updateSyncStatus("Menghubungkan...", "");
+  render();
   startRemoteAutoRefresh();
   try {
-    await refreshRemoteProductionRecords();
     const remoteRecords = await fetchRemoteRecords();
     if (remoteRecords.length) {
-      records = remoteRecords;
+      records = mergeRemoteRecordsWithPending(remoteRecords);
       saveRecords();
       render();
       updateSyncStatus("Online auto-sync", "is-online");
       showToast("Database online tersambung.");
+      refreshRemoteProductionRecords({ silent: true });
+      syncPendingRemoteUpserts();
       return;
     }
 
     if (records.length) {
-      const savedRecords = await saveRemoteRecords(records);
-      if (savedRecords.length) {
-        records = savedRecords;
-        saveRecords();
-          render();
-        }
-        updateSyncStatus("Online auto-sync", "is-online");
-        showToast("Data lokal dikirim ke database online.");
-        return;
-      }
+      records.forEach(queueRemoteUpsert);
+      syncPendingRemoteUpserts();
+      updateSyncStatus("Menyinkronkan data lokal", "");
+      refreshRemoteProductionRecords({ silent: true });
+      return;
+    }
 
-      render();
-      updateSyncStatus("Online auto-sync", "is-online");
+    render();
+    updateSyncStatus("Online auto-sync", "is-online");
+    refreshRemoteProductionRecords({ silent: true });
+    syncPendingRemoteUpserts();
   } catch (error) {
     console.error(error);
     render();
     updateSyncStatus("Gagal sinkron", "is-error");
+    scheduleRemoteRetry();
     showToast("Database online gagal tersambung, memakai data lokal.");
   }
 }
@@ -511,6 +641,40 @@ function getMonthContext(dateValue) {
     startIso: dateToIso(new Date(year, monthIndex, 1)),
     endIso: dateToIso(new Date(year, monthIndex + 1, 0))
   };
+}
+
+function getDashboardMonthContext() {
+  const selected = controls.dashboardMonthFilter && controls.dashboardMonthFilter.value;
+  if (selected && /^\d{4}-\d{2}$/.test(selected)) {
+    return getMonthContext(selected + "-01");
+  }
+  return getMonthContext();
+}
+
+function updateDashboardMonthFilter() {
+  if (!controls.dashboardMonthFilter) return;
+  const currentValue = controls.dashboardMonthFilter.value;
+  const monthValues = new Set([todayIso().slice(0, 7)]);
+  records.forEach(function (record) {
+    [record.taxValidDate, record.fieldVisitDate].forEach(function (dateValue) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(dateValue || ""))) {
+        monthValues.add(String(dateValue).slice(0, 7));
+      }
+    });
+  });
+  const values = Array.from(monthValues).sort().reverse();
+  const signature = values.join("|");
+  if (controls.dashboardMonthFilter.dataset.options === signature) return;
+
+  controls.dashboardMonthFilter.replaceChildren();
+  values.forEach(function (value) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = getMonthContext(value + "-01").label;
+    controls.dashboardMonthFilter.append(option);
+  });
+  controls.dashboardMonthFilter.dataset.options = signature;
+  controls.dashboardMonthFilter.value = values.includes(currentValue) ? currentValue : values[0];
 }
 
 function isDateInMonth(dateValue, context) {
@@ -944,9 +1108,7 @@ function getProductionRecordedDate(record) {
 function hasProductionPlate(value) {
   const plateKey = getPlateKey(value);
   if (!plateKey) return false;
-  return productionRecords.some(function (record) {
-    return record.plateKey === plateKey;
-  });
+  return Boolean(productionRecordsByPlate[plateKey] && productionRecordsByPlate[plateKey].length);
 }
 
 function getRecordedDateDistance(record, referenceDate) {
@@ -970,10 +1132,7 @@ function getProductionMatch(value) {
   const plateKey = typeof value === "string" ? getPlateKey(value) : getPlateKey(value && value.plateNumber);
   if (!plateKey) return null;
   const referenceDate = getProductionReferenceDate(value);
-  const candidates = productionRecords
-    .filter(function (record) {
-      return record.plateKey === plateKey;
-    });
+  const candidates = (productionRecordsByPlate[plateKey] || []).slice();
 
   const closeMatches = candidates
     .filter(function (record) {
@@ -1382,8 +1541,12 @@ function isDateWithin(dateValue, today, limit, includePaid) {
 
 function updateSummary() {
   const today = todayIso();
-  const monthContext = getMonthContext(today);
-  const unpaid = records.filter(function (record) {
+  updateDashboardMonthFilter();
+  const monthContext = getDashboardMonthContext();
+  const monthRecords = records.filter(function (record) {
+    return isDateInMonth(record.taxValidDate, monthContext);
+  });
+  const unpaid = monthRecords.filter(function (record) {
     return !isRecordPaid(record);
   });
   const monthDlRecords = records.filter(function (record) {
@@ -1411,12 +1574,12 @@ function updateSummary() {
     };
   });
 
-  summary.totalRecords.textContent = records.length;
+  summary.totalRecords.textContent = monthRecords.length;
   summary.unpaidRecords.textContent = unpaid.length;
-  summary.overdueRecords.textContent = records.filter(function (record) {
+  summary.overdueRecords.textContent = monthRecords.filter(function (record) {
     return isTaxOverdue(record, today);
   }).length;
-  summary.todayFollowUps.textContent = records.filter(function (record) {
+  summary.todayFollowUps.textContent = monthRecords.filter(function (record) {
     const nextFollowUp = getPrimaryFollowUp(record);
     return !isRecordPaid(record) && nextFollowUp && isDateWithin(nextFollowUp.date, today, 30, false);
   }).length;
@@ -1435,10 +1598,10 @@ function updateSummary() {
     if (summary.dlWeekCounts[index]) summary.dlWeekCounts[index].textContent = stat.count + " DL";
     if (summary.dlWeekPaid[index]) summary.dlWeekPaid[index].textContent = formatCurrency(stat.amount) + " cair";
   });
-  renderDashboardInsights(monthDlRecords, monthPaidDlRecords, weeklyStats, monthContext, paidMonthAmount);
+  renderDashboardInsights(monthRecords, monthDlRecords, monthPaidDlRecords, weeklyStats, monthContext, paidMonthAmount);
 }
 
-function renderDashboardInsights(monthDlRecords, monthPaidDlRecords, weeklyStats, monthContext, paidMonthAmount) {
+function renderDashboardInsights(monthRecords, monthDlRecords, monthPaidDlRecords, weeklyStats, monthContext, paidMonthAmount) {
   if (!summary.dashboardInsights) return;
   summary.dashboardInsights.replaceChildren();
 
@@ -1464,7 +1627,7 @@ function renderDashboardInsights(monthDlRecords, monthPaidDlRecords, weeklyStats
     }
   }
 
-  const urgentCount = records.filter(function (record) {
+  const urgentCount = monthRecords.filter(function (record) {
     return !isRecordPaid(record) && matchesFollowUpCategory(record, "needsAction");
   }).length;
   if (urgentCount) insights.push(urgentCount + " WP masih masuk kategori follow-up segera.");
@@ -1989,21 +2152,14 @@ async function upsertRecord(record) {
   render();
 
   if (hasRemoteDatabase()) {
-    try {
-      const savedRecords = await saveRemoteRecords([record]);
-      if (idsToDeleteAfterMerge.length) await deleteRemoteRecords(idsToDeleteAfterMerge);
-      mergeSavedRecords(savedRecords);
-      saveRecords();
-      render();
-      updateSyncStatus("Online tersambung", "is-online");
-      showToast(duplicateMessage ? duplicateMessage + " dan tersinkron." : (isUpdate ? "Data diperbarui dan tersinkron." : "Data ditambahkan dan tersinkron."));
-      return;
-    } catch (error) {
-      console.error(error);
-      updateSyncStatus("Gagal sinkron", "is-error");
-      showToast("Data tersimpan lokal, database online gagal sinkron.");
-      return;
+    if (idsToDeleteAfterMerge.length) {
+      deleteRemoteRecords(idsToDeleteAfterMerge).catch(function () {
+        console.warn("Hapus data lama akan dicoba kembali saat koneksi stabil.");
+      });
     }
+    sendRecordInBackground(record, duplicateMessage ? duplicateMessage + " tersinkron." : (isUpdate ? "Data diperbarui dan tersinkron." : "Data ditambahkan dan tersinkron."));
+    showToast(duplicateMessage || (isUpdate ? "Data diperbarui di perangkat. Sedang sinkron." : "Data tersimpan. Sedang sinkron ke database."));
+    return;
   }
 
   showToast(duplicateMessage || (isUpdate ? "Data wajib pajak diperbarui." : "Data wajib pajak ditambahkan."));
@@ -2383,6 +2539,10 @@ if (fields.taxPotential) {
   if (!control) return;
   control.addEventListener("input", render);
 });
+
+if (controls.dashboardMonthFilter) {
+  controls.dashboardMonthFilter.addEventListener("change", updateSummary);
+}
 
 if (controls.mobileMenuBtn) {
   controls.mobileMenuBtn.addEventListener("click", function (event) {

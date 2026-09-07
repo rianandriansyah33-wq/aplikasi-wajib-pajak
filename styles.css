@@ -187,6 +187,30 @@ h3 {
   color: var(--app-danger);
 }
 
+.dashboard-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: .55rem;
+}
+
+.dashboard-period-control {
+  display: grid;
+  gap: .22rem;
+  min-width: 11.5rem;
+  color: var(--app-muted);
+  font-size: .64rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.dashboard-period-control .form-select {
+  min-height: 2.35rem;
+  border-color: var(--app-line);
+  color: var(--app-text);
+  font-size: .8rem;
+  font-weight: 750;
+}
+
 .top-actions {
   align-items: center;
   gap: .38rem;
@@ -1656,6 +1680,20 @@ textarea.form-control {
 }
 
 @media (max-width: 767.98px) {
+  .dashboard-header {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+
+  .dashboard-controls {
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+
+  .dashboard-period-control {
+    flex: 1 1 auto;
+  }
+
   .dashboard-section > .card-body,
   .entry-panel .card-body,
   .list-panel .card-body {
