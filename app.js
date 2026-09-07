@@ -654,14 +654,14 @@ function getDashboardMonthContext() {
 function updateDashboardMonthFilter() {
   if (!controls.dashboardMonthFilter) return;
   const currentValue = controls.dashboardMonthFilter.value;
-  const monthValues = new Set([todayIso().slice(0, 7)]);
+  const monthValues = new Set();
   records.forEach(function (record) {
-    [record.taxValidDate, record.fieldVisitDate].forEach(function (dateValue) {
-      if (/^\d{4}-\d{2}-\d{2}$/.test(String(dateValue || ""))) {
-        monthValues.add(String(dateValue).slice(0, 7));
-      }
-    });
+    const dateValue = record.fieldVisitDate;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(dateValue || ""))) {
+      monthValues.add(String(dateValue).slice(0, 7));
+    }
   });
+  if (!monthValues.size) monthValues.add(todayIso().slice(0, 7));
   const values = Array.from(monthValues).sort().reverse();
   const signature = values.join("|");
   if (controls.dashboardMonthFilter.dataset.options === signature) return;
@@ -1544,7 +1544,7 @@ function updateSummary() {
   updateDashboardMonthFilter();
   const monthContext = getDashboardMonthContext();
   const monthRecords = records.filter(function (record) {
-    return isDateInMonth(record.taxValidDate, monthContext);
+    return isDateInMonth(record.fieldVisitDate, monthContext);
   });
   const unpaid = monthRecords.filter(function (record) {
     return !isRecordPaid(record);
