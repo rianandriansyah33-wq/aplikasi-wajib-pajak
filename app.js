@@ -664,7 +664,13 @@ function updateDashboardMonthFilter() {
   if (!monthValues.size) monthValues.add(todayIso().slice(0, 7));
   const values = Array.from(monthValues).sort().reverse();
   const signature = values.join("|");
-  if (controls.dashboardMonthFilter.dataset.options === signature) return;
+  const hasCompleteOptions = controls.dashboardMonthFilter.options.length === values.length &&
+    values.every(function (value) {
+      return Array.from(controls.dashboardMonthFilter.options).some(function (option) {
+        return option.value === value && Boolean(option.textContent.trim());
+      });
+    });
+  if (controls.dashboardMonthFilter.dataset.options === signature && hasCompleteOptions && controls.dashboardMonthFilter.value) return;
 
   controls.dashboardMonthFilter.replaceChildren();
   values.forEach(function (value) {
@@ -673,8 +679,10 @@ function updateDashboardMonthFilter() {
     option.textContent = getMonthContext(value + "-01").label;
     controls.dashboardMonthFilter.append(option);
   });
+  const selectedValue = values.includes(currentValue) ? currentValue : values[0];
+  controls.dashboardMonthFilter.value = selectedValue;
+  controls.dashboardMonthFilter.selectedIndex = Math.max(0, values.indexOf(selectedValue));
   controls.dashboardMonthFilter.dataset.options = signature;
-  controls.dashboardMonthFilter.value = values.includes(currentValue) ? currentValue : values[0];
 }
 
 function isDateInMonth(dateValue, context) {
