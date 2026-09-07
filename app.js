@@ -443,13 +443,17 @@ async function syncPendingRemoteUpserts() {
     saveRecords();
     remoteRetryAttempt = 0;
     updateSyncStatus("Online auto-sync", "is-online");
+    if (form.dataset.pendingRecordId && sentIds.has(form.dataset.pendingRecordId)) {
+      resetForm();
+      showToast("Data berhasil tersimpan di database. Form siap untuk input berikutnya.");
+    }
   } catch (error) {
     console.warn("Sinkron ulang database gagal", error);
     scheduleRemoteRetry();
   }
 }
 
-function sendRecordInBackground(record, successMessage) {
+function sendRecordInBackground(record) {
   if (!hasRemoteDatabase()) return;
   queueRemoteUpsert(record);
   if (isRemoteMutating()) {
@@ -459,9 +463,12 @@ function sendRecordInBackground(record, successMessage) {
   syncPendingRemoteUpserts().then(function () {
     if (!pendingRemoteUpserts.some(function (item) { return item.id === record.id; })) {
       render();
-      if (successMessage) showToast(successMessage);
     }
   });
+}
+
+function clearFormSyncPending() {
+  delete form.dataset.pendingRecordId;
 }
 
 async function refreshRemoteRecords(options) {
