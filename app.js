@@ -1,6 +1,9 @@
 const STORAGE_KEY = "wajibPajakFollowUpRecords";
 const PRODUCTION_STORAGE_KEY = "wajibPajakProductionRecords";
 const REMOTE_REFRESH_INTERVAL_MS = 10000;
+const REMOTE_HEARTBEAT_INTERVAL_MS = 30000;
+const REMOTE_REQUEST_TIMEOUT_MS = 30000;
+const REMOTE_FAILURE_THRESHOLD = 3;
 const REMOTE_WRITE_SETTLE_MS = 2000;
 const REMOTE_EMPTY_AFTER_WRITE_GUARD_MS = 15000;
 const JASA_RAHARJA_RODA_4 = 143000;
@@ -54,7 +57,6 @@ const controls = {
   autoTaxValidDate: document.querySelector("#autoTaxValidDate"),
   autoTaxPotential: document.querySelector("#autoTaxPotential"),
   syncStatus: document.querySelector("#syncStatus"),
-  appVersion: document.querySelector("#appVersion"),
   dashboardSection: document.querySelector("#dashboardSection"),
   dashboardSiappBtn: document.querySelector("#dashboardSiappBtn"),
   listPanel: document.querySelector(".list-panel"),
@@ -112,6 +114,9 @@ let isRemoteRefreshing = false;
 let remoteMutationCount = 0;
 let remoteAutoRefreshStarted = false;
 let lastRemoteWriteAt = 0;
+let remoteConsecutiveFailures = 0;
+let remoteHeartbeatStarted = false;
+let remoteRefreshTimer = null;
 let activeDetailRecordId = "";
 
 function getDatabaseConfig() {
@@ -134,14 +139,10 @@ function updateSyncStatus(text, state) {
 
 function getLocalAppVersion() {
   const now = new Date();
-  const pad = function (value) {
-    return String(value).padStart(2, "0");
-  };
-
+  const pad = function (value) { return String(value).padStart(2, "0"); };
   return String(now.getFullYear()) +
     pad(now.getMonth() + 1) +
-    pad(now.getDate()) +
-    "-" +
+    pad(now.getDate()) + "-" +
     pad(now.getHours()) +
     pad(now.getMinutes()) +
     pad(now.getSeconds());
@@ -150,9 +151,10 @@ function getLocalAppVersion() {
 const APP_VERSION = getLocalAppVersion();
 
 function setAppVersion() {
-  if (!controls.appVersion) return;
-  controls.appVersion.textContent = "Versi " + APP_VERSION;
-  controls.appVersion.title = "Versi aplikasi: " + APP_VERSION;
+  const element = document.querySelector("#appVersion");
+  if (!element) return;
+  element.textContent = "Versi " + APP_VERSION;
+  element.title = "Versi aplikasi: " + APP_VERSION;
 }
 
 function createId() {
@@ -189,8 +191,8 @@ function saveProductionRecords() {
 async function requestDatabase(action, payload) {
   if (!hasRemoteDatabase()) return null;
 
-  if (action === "list" || action === "listProduction" || action === "deleteMany") {
-    return requestDatabaseJsonp(action, payload);
+  if (action === "list" || action === "listProduction" || action === "ping" || action === "deleteMany") {
+    return requestDatabaseJsonpWithRetry(action, payload);
   }
 
   await fetch(databaseConfig.googleScriptUrl, {
@@ -212,15 +214,16 @@ function requestDatabaseJsonp(action, payload) {
     const script = document.createElement("script");
     const params = new URLSearchParams({
       action: action,
-      callback: callbackName
+      callback: callbackName,
+      _: String(Date.now())
     });
 
     if (payload) params.set("payload", JSON.stringify(payload));
 
     const timeout = window.setTimeout(function () {
       cleanup();
-      reject(new Error("Database tidak merespons."));
-    }, 15000);
+      reject(new Error("Database tidak merespons dalam 30 detik."));
+    }, REMOTE_REQUEST_TIMEOUT_MS);
 
     function cleanup() {
       window.clearTimeout(timeout);
@@ -247,6 +250,22 @@ function requestDatabaseJsonp(action, payload) {
   });
 }
 
+async function requestDatabaseJsonpWithRetry(action, payload) {
+  let lastError = null;
+  const delays = [500, 1500, 3000];
+
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      return await requestDatabaseJsonp(action, payload);
+    } catch (error) {
+      lastError = error;
+      if (attempt < delays.length) await delay(delays[attempt]);
+    }
+  }
+
+  throw lastError || new Error("Database tidak dapat diakses.");
+}
+
 async function fetchRemoteRecords() {
   const result = await requestDatabase("list");
   return Array.isArray(result.records) ? result.records.map(normalizeRecord) : [];
@@ -267,31 +286,11 @@ async function saveRemoteRecords(items) {
 
 async function deleteRemoteRecords(ids) {
   if (!hasRemoteDatabase() || !ids.length) return;
-
   beginRemoteMutation();
   try {
-    let lastError = null;
-
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      try {
-        const result = await requestDatabase("deleteMany", {
-          ids: ids
-        });
-
-        if (!result || result.ok !== true) {
-          throw new Error(result && result.error ? result.error : "Database menolak penghapusan.");
-        }
-
-        return result;
-      } catch (error) {
-        lastError = error;
-        if (attempt < 2) {
-          await delay(1000 * (attempt + 1));
-        }
-      }
-    }
-
-    throw lastError || new Error("Penghapusan database gagal.");
+    await requestDatabase("deleteMany", {
+      ids: ids
+    });
   } finally {
     finishRemoteMutation();
   }
@@ -379,6 +378,36 @@ function shouldKeepLocalRecordsDuringRecentWrite(remoteRecords) {
   );
 }
 
+function markRemoteSuccess() {
+  remoteConsecutiveFailures = 0;
+  updateSyncStatus("Online tersambung", "is-online");
+}
+
+function markRemoteFailure(error, notify) {
+  remoteConsecutiveFailures += 1;
+  console.warn("Database sementara gagal:", error);
+
+  if (remoteConsecutiveFailures >= REMOTE_FAILURE_THRESHOLD) {
+    updateSyncStatus("Gagal koneksi", "is-error");
+    if (notify) showToast("Koneksi database terputus. Sistem akan mencoba kembali otomatis.");
+  } else {
+    // Satu kegagalan sementara tidak membuat status langsung merah.
+    updateSyncStatus("Online tersambung", "is-online");
+  }
+}
+
+async function checkRemoteHeartbeat() {
+  if (!hasRemoteDatabase()) return false;
+  try {
+    await requestDatabase("ping");
+    markRemoteSuccess();
+    return true;
+  } catch (error) {
+    markRemoteFailure(error, false);
+    return false;
+  }
+}
+
 async function refreshRemoteRecords(options) {
   const settings = options || {};
   if (!hasRemoteDatabase() || isRemoteRefreshing || isRemoteMutating()) return;
@@ -399,9 +428,10 @@ async function refreshRemoteRecords(options) {
     }
     updateSyncStatus("Online auto-sync", "is-online");
   } catch (error) {
-    console.error(error);
-    updateSyncStatus("Gagal sinkron", "is-error");
-    if (!settings.silent) showToast("Auto-sync gagal mengambil database.");
+    markRemoteFailure(error, !settings.silent);
+    if (!settings.silent && remoteConsecutiveFailures < REMOTE_FAILURE_THRESHOLD) {
+      showToast("Koneksi database sedang mencoba kembali.");
+    }
   } finally {
     isRemoteRefreshing = false;
   }
@@ -429,16 +459,36 @@ function startRemoteAutoRefresh() {
   if (!hasRemoteDatabase() || remoteAutoRefreshStarted) return;
   remoteAutoRefreshStarted = true;
 
-  window.setInterval(function () {
-    if (!document.hidden) refreshRemoteRecords({ silent: true });
-  }, REMOTE_REFRESH_INTERVAL_MS);
+  const scheduleRefresh = function () {
+    if (remoteRefreshTimer) window.clearTimeout(remoteRefreshTimer);
+
+    remoteRefreshTimer = window.setTimeout(async function () {
+      if (!document.hidden && !isRemoteRefreshing && !isRemoteMutating()) {
+        await refreshRemoteRecords({ silent: true });
+      }
+      scheduleRefresh();
+    }, REMOTE_REFRESH_INTERVAL_MS);
+  };
+
+  scheduleRefresh();
+
+  if (!remoteHeartbeatStarted) {
+    remoteHeartbeatStarted = true;
+    window.setInterval(function () {
+      if (!document.hidden) checkRemoteHeartbeat();
+    }, REMOTE_HEARTBEAT_INTERVAL_MS);
+  }
 
   window.addEventListener("focus", function () {
+    checkRemoteHeartbeat();
     refreshRemoteRecords({ silent: true });
   });
 
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden) refreshRemoteRecords({ silent: true });
+    if (!document.hidden) {
+      checkRemoteHeartbeat();
+      refreshRemoteRecords({ silent: true });
+    }
   });
 }
 
@@ -451,38 +501,41 @@ async function initializeRemoteDatabase() {
 
   updateSyncStatus("Menghubungkan...", "");
   startRemoteAutoRefresh();
-  try {
-    await refreshRemoteProductionRecords();
-    const remoteRecords = await fetchRemoteRecords();
-    if (remoteRecords.length) {
-      records = remoteRecords;
-      saveRecords();
-      render();
-      updateSyncStatus("Online auto-sync", "is-online");
-      showToast("Database online tersambung.");
-      return;
-    }
 
-    if (records.length) {
-      const savedRecords = await saveRemoteRecords(records);
-      if (savedRecords.length) {
-        records = savedRecords;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await checkRemoteHeartbeat();
+      await refreshRemoteProductionRecords();
+      const remoteRecords = await fetchRemoteRecords();
+
+      if (remoteRecords.length) {
+        records = remoteRecords;
         saveRecords();
+        render();
+      } else if (records.length) {
+        const savedRecords = await saveRemoteRecords(records);
+        if (savedRecords.length) {
+          records = savedRecords;
+          saveRecords();
           render();
         }
-        updateSyncStatus("Online auto-sync", "is-online");
-        showToast("Data lokal dikirim ke database online.");
-        return;
       }
 
-      render();
-      updateSyncStatus("Online auto-sync", "is-online");
-  } catch (error) {
-    console.error(error);
-    render();
-    updateSyncStatus("Gagal sinkron", "is-error");
-    showToast("Database online gagal tersambung, memakai data lokal.");
+      markRemoteSuccess();
+      showToast("Database online tersambung.");
+      return;
+    } catch (error) {
+      console.error("Percobaan koneksi database gagal:", error);
+      remoteConsecutiveFailures += 1;
+      if (attempt < 2) {
+        updateSyncStatus("Menghubungkan lagi...", "");
+        await delay(1000 * (attempt + 1));
+      }
+    }
   }
+
+  updateSyncStatus("Gagal koneksi", "is-error");
+  showToast("Database belum tersambung. Sistem akan mencoba kembali otomatis.");
 }
 
 function todayIso() {
