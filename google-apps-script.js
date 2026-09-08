@@ -55,11 +55,6 @@ function handleRequest_(e) {
     var action = payload.action || "list";
     var result;
 
-    if (action === "ping") {
-      result = { ok: true, message: "Database online", serverTime: new Date().toISOString() };
-      return output_(result, e);
-    }
-
     if (action === "list") {
       result = { ok: true, records: listRecords_() };
       return output_(result, e);

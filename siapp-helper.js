@@ -27,8 +27,6 @@
       googleScriptUrl: googleScriptUrl,
       syncScriptUrl: syncScriptUrl,
       syncMode: mode || "quick",
-      quickLookbackMonths: 3,
-      endpointPerPageSize: 1000,
       watchIntervalMs: getWatchIntervalMs()
     };
     const source = [
@@ -57,7 +55,7 @@
       watchBookmarkletLink.textContent = "Pantau " + getWatchIntervalLabel();
     }
     if (fullBookmarkletLink) fullBookmarkletLink.href = fullBookmarklet;
-    showStatus("Tombol siap dipasang. Sinkron Cepat membaca 3 bulan terakhir. Pantau Otomatis akan cek SIAPP tiap " + getWatchIntervalLabel() + ".");
+    showStatus("Tombol siap dipasang. Pantau Otomatis akan cek SIAPP tiap " + getWatchIntervalLabel() + ".");
     return { quickBookmarklet: quickBookmarklet, watchBookmarklet: watchBookmarklet, fullBookmarklet: fullBookmarklet };
   }
 
