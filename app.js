@@ -3,6 +3,9 @@ const PRODUCTION_STORAGE_KEY = "wajibPajakProductionRecords";
 const REMOTE_REFRESH_INTERVAL_MS = 10000;
 const REMOTE_WRITE_SETTLE_MS = 2000;
 const REMOTE_EMPTY_AFTER_WRITE_GUARD_MS = 15000;
+const REMOTE_REQUEST_TIMEOUT_MS = 30000;
+const REMOTE_RETRY_DELAYS_MS = [1000, 2500, 5000];
+const APP_VERSION = "20260908-060005";
 const JASA_RAHARJA_RODA_4 = 143000;
 const DENDA_RODA_4_PER_3_BULAN = 35000;
 const LETTER_SEQUENCE = ["SPOS", "NPP", "NTP"];
@@ -54,6 +57,8 @@ const controls = {
   autoTaxValidDate: document.querySelector("#autoTaxValidDate"),
   autoTaxPotential: document.querySelector("#autoTaxPotential"),
   syncStatus: document.querySelector("#syncStatus"),
+  retryDatabaseBtn: document.querySelector("#retryDatabaseBtn"),
+  appVersion: document.querySelector("#appVersion"),
   dashboardSection: document.querySelector("#dashboardSection"),
   dashboardSiappBtn: document.querySelector("#dashboardSiappBtn"),
   listPanel: document.querySelector(".list-panel"),
@@ -131,6 +136,18 @@ function updateSyncStatus(text, state) {
   if (state) controls.syncStatus.classList.add(state);
 }
 
+function setDatabaseRetryVisible(visible) {
+  if (!controls.retryDatabaseBtn) return;
+  controls.retryDatabaseBtn.hidden = !visible;
+  controls.retryDatabaseBtn.disabled = false;
+}
+
+function setAppVersion() {
+  if (!controls.appVersion) return;
+  controls.appVersion.textContent = "Versi " + APP_VERSION.slice(0, 8) + " " + APP_VERSION.slice(9, 11) + ":" + APP_VERSION.slice(11, 13) + ":" + APP_VERSION.slice(13, 15);
+  controls.appVersion.title = "Versi aplikasi: " + APP_VERSION;
+}
+
 function createId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
     return window.crypto.randomUUID();
@@ -182,21 +199,23 @@ async function requestDatabase(action, payload) {
   return Object.assign({ ok: true }, payload || {});
 }
 
-function requestDatabaseJsonp(action, payload) {
+function requestDatabaseJsonpOnce(action, payload) {
   return new Promise(function (resolve, reject) {
     const callbackName = "__wajibPajakDbCallback" + Date.now() + Math.random().toString(36).slice(2);
     const script = document.createElement("script");
     const params = new URLSearchParams({
       action: action,
-      callback: callbackName
+      callback: callbackName,
+      _: String(Date.now())
     });
 
     if (payload) params.set("payload", JSON.stringify(payload));
 
+    let settled = false;
     const timeout = window.setTimeout(function () {
       cleanup();
-      reject(new Error("Database tidak merespons."));
-    }, 15000);
+      reject(new Error("Database tidak merespons dalam 30 detik."));
+    }, REMOTE_REQUEST_TIMEOUT_MS);
 
     function cleanup() {
       window.clearTimeout(timeout);
@@ -204,7 +223,16 @@ function requestDatabaseJsonp(action, payload) {
       script.remove();
     }
 
+    function finishError(message) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error(message));
+    }
+
     window[callbackName] = function (result) {
+      if (settled) return;
+      settled = true;
       cleanup();
       if (!result || !result.ok) {
         reject(new Error(result && result.error ? result.error : "Database request gagal"));
@@ -214,13 +242,28 @@ function requestDatabaseJsonp(action, payload) {
     };
 
     script.onerror = function () {
-      cleanup();
-      reject(new Error("Database tidak dapat diakses."));
+      finishError("Database tidak dapat diakses.");
     };
 
     script.src = databaseConfig.googleScriptUrl + "?" + params.toString();
     document.head.append(script);
   });
+}
+
+async function requestDatabaseJsonp(action, payload) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= REMOTE_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await requestDatabaseJsonpOnce(action, payload);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= REMOTE_RETRY_DELAYS_MS.length) break;
+      await delay(REMOTE_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+
+  throw lastError || new Error("Database tidak dapat diakses.");
 }
 
 async function fetchRemoteRecords() {
@@ -241,15 +284,13 @@ async function saveRemoteRecords(items) {
   }
 }
 
-async function deleteRemoteRecords(ids, recordsToDelete) {
-  if (!hasRemoteDatabase() || !ids.length) return { deletedCount: 0 };
+async function deleteRemoteRecords(ids) {
+  if (!hasRemoteDatabase() || !ids.length) return;
   beginRemoteMutation();
   try {
-    const result = await requestDatabase("deleteMany", {
-      ids: ids,
-      records: Array.isArray(recordsToDelete) ? recordsToDelete : []
+    await requestDatabase("deleteMany", {
+      ids: ids
     });
-    return result || { deletedCount: 0 };
   } finally {
     finishRemoteMutation();
   }
@@ -400,25 +441,36 @@ function startRemoteAutoRefresh() {
   });
 }
 
-async function initializeRemoteDatabase() {
+async function initializeRemoteDatabase(options) {
+  const settings = options || {};
+
   if (!hasRemoteDatabase()) {
     updateSyncStatus("Lokal", "");
+    setDatabaseRetryVisible(false);
     render();
     return;
   }
 
+  if (settings.retryButton && controls.retryDatabaseBtn) {
+    controls.retryDatabaseBtn.disabled = true;
+  }
+
   updateSyncStatus("Menghubungkan...", "");
+  setDatabaseRetryVisible(false);
   startRemoteAutoRefresh();
+
   try {
     await refreshRemoteProductionRecords();
     const remoteRecords = await fetchRemoteRecords();
+
     if (remoteRecords.length) {
       records = remoteRecords;
       saveRecords();
       render();
-      updateSyncStatus("Online auto-sync", "is-online");
+      updateSyncStatus("Online tersambung", "is-online");
+      setDatabaseRetryVisible(false);
       showToast("Database online tersambung.");
-      return;
+      return true;
     }
 
     if (records.length) {
@@ -426,20 +478,27 @@ async function initializeRemoteDatabase() {
       if (savedRecords.length) {
         records = savedRecords;
         saveRecords();
-          render();
-        }
-        updateSyncStatus("Online auto-sync", "is-online");
-        showToast("Data lokal dikirim ke database online.");
-        return;
+        render();
       }
+      updateSyncStatus("Online tersambung", "is-online");
+      setDatabaseRetryVisible(false);
+      showToast("Data lokal dikirim ke database online.");
+      return true;
+    }
 
-      render();
-      updateSyncStatus("Online auto-sync", "is-online");
+    render();
+    updateSyncStatus("Online tersambung", "is-online");
+    setDatabaseRetryVisible(false);
+    return true;
   } catch (error) {
-    console.error(error);
+    console.error("Koneksi database gagal:", error);
     render();
     updateSyncStatus("Gagal sinkron", "is-error");
-    showToast("Database online gagal tersambung, memakai data lokal.");
+    setDatabaseRetryVisible(true);
+    showToast("Database gagal tersambung. Klik Coba Hubungkan Lagi.");
+    return false;
+  } finally {
+    if (controls.retryDatabaseBtn) controls.retryDatabaseBtn.disabled = false;
   }
 }
 
@@ -2057,10 +2116,7 @@ async function deleteRecord(id) {
 
   if (hasRemoteDatabase()) {
     try {
-      const deleteResult = await deleteRemoteRecords([id], [record]);
-      if (deleteResult && deleteResult.deletedCount === 0) {
-        throw new Error("Data tidak ditemukan di database online.");
-      }
+      await deleteRemoteRecords([id]);
       updateSyncStatus("Online tersambung", "is-online");
       showToast("Data dihapus dan tersinkron.");
       return;
@@ -2562,4 +2618,12 @@ updateProductionSummary();
 updateProductionCheckPreview();
 updateSiappAutofillPanel();
 startMobileHeaderAutoHide();
+setAppVersion();
+
+if (controls.retryDatabaseBtn) {
+  controls.retryDatabaseBtn.addEventListener("click", function () {
+    initializeRemoteDatabase({ retryButton: true });
+  });
+}
+
 initializeRemoteDatabase();
