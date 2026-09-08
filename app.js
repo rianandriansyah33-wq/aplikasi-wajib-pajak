@@ -241,13 +241,15 @@ async function saveRemoteRecords(items) {
   }
 }
 
-async function deleteRemoteRecords(ids) {
-  if (!hasRemoteDatabase() || !ids.length) return;
+async function deleteRemoteRecords(ids, recordsToDelete) {
+  if (!hasRemoteDatabase() || !ids.length) return { deletedCount: 0 };
   beginRemoteMutation();
   try {
-    await requestDatabase("deleteMany", {
-      ids: ids
+    const result = await requestDatabase("deleteMany", {
+      ids: ids,
+      records: Array.isArray(recordsToDelete) ? recordsToDelete : []
     });
+    return result || { deletedCount: 0 };
   } finally {
     finishRemoteMutation();
   }
@@ -2055,7 +2057,10 @@ async function deleteRecord(id) {
 
   if (hasRemoteDatabase()) {
     try {
-      await deleteRemoteRecords([id]);
+      const deleteResult = await deleteRemoteRecords([id], [record]);
+      if (deleteResult && deleteResult.deletedCount === 0) {
+        throw new Error("Data tidak ditemukan di database online.");
+      }
       updateSyncStatus("Online tersambung", "is-online");
       showToast("Data dihapus dan tersinkron.");
       return;

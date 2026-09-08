@@ -84,8 +84,8 @@ function handleRequest_(e) {
     }
 
     if (action === "deleteMany") {
-      deleteRecords_(payload.ids || []);
-      result = { ok: true };
+      var deletedCount = deleteRecords_(payload.ids || [], payload.records || []);
+      result = { ok: true, deletedCount: deletedCount };
       return output_(result, e);
     }
 
@@ -399,10 +399,24 @@ function getClosestProductionForTaxpayer_(productionRecords, taxpayerRecord) {
   })[0] || null;
 }
 
-function deleteRecords_(ids) {
+function deleteRecords_(ids, records) {
   var idSet = {};
-  ids.forEach(function (id) {
-    if (id) idSet[String(id)] = true;
+  (ids || []).forEach(function (id) {
+    var normalizedId = String(id || "").trim();
+    if (normalizedId) idSet[normalizedId] = true;
+  });
+
+  var fallbackRecords = Array.isArray(records) ? records : [];
+  var fallbackByPlate = {};
+  fallbackRecords.forEach(function (record) {
+    var plateKey = getPlateKey_(record && record.plateNumber);
+    if (!plateKey) return;
+    fallbackByPlate[plateKey] = fallbackByPlate[plateKey] || [];
+    fallbackByPlate[plateKey].push({
+      ownerName: cleanOwnerName_(record && record.ownerName),
+      taxPotential: Number(record && record.taxPotential || 0),
+      id: String(record && record.id || "").trim()
+    });
   });
 
   var lock = LockService.getScriptLock();
@@ -411,13 +425,35 @@ function deleteRecords_(ids) {
   try {
     var sheet = getSheet_();
     var lastRow = sheet.getLastRow();
-    if (lastRow < 2) return;
+    if (lastRow < 2) return 0;
 
-    var values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+    var values = sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues();
+    var deletedCount = 0;
+
     for (var index = values.length - 1; index >= 0; index -= 1) {
-      var id = String(values[index][0] || "");
-      if (idSet[id]) sheet.deleteRow(index + 2);
+      var rowRecord = rowToRecord_(values[index]);
+      var rowId = String(rowRecord.id || "").trim();
+      var shouldDelete = !!idSet[rowId];
+
+      // Legacy rows may not have an id. In that case, use the taxpayer's
+      // plate/owner/nominal as a safe fallback so old records remain deletable.
+      if (!shouldDelete && !rowId) {
+        var plateKey = getPlateKey_(rowRecord.plateNumber);
+        var candidates = fallbackByPlate[plateKey] || [];
+        shouldDelete = candidates.some(function (candidate) {
+          var sameOwner = !candidate.ownerName || candidate.ownerName === cleanOwnerName_(rowRecord.ownerName);
+          var sameNominal = Number(candidate.taxPotential || 0) === Number(rowRecord.taxPotential || 0);
+          return sameOwner && sameNominal;
+        });
+      }
+
+      if (shouldDelete) {
+        sheet.deleteRow(index + 2);
+        deletedCount += 1;
+      }
     }
+
+    return deletedCount;
   } finally {
     lock.releaseLock();
   }
