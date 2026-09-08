@@ -55,11 +55,6 @@ function handleRequest_(e) {
     var action = payload.action || "list";
     var result;
 
-    if (action === "ping") {
-      result = { ok: true, message: "Database online", serverTime: new Date().toISOString() };
-      return output_(result, e);
-    }
-
     if (action === "list") {
       result = { ok: true, records: listRecords_() };
       return output_(result, e);
@@ -89,8 +84,8 @@ function handleRequest_(e) {
     }
 
     if (action === "deleteMany") {
-      deleteRecords_(payload.ids || []);
-      result = { ok: true };
+      var deletedCount = deleteRecords_(payload.ids || []);
+      result = { ok: true, deletedCount: deletedCount };
       return output_(result, e);
     }
 
@@ -406,26 +401,36 @@ function getClosestProductionForTaxpayer_(productionRecords, taxpayerRecord) {
 
 function deleteRecords_(ids) {
   var idSet = {};
-  ids.forEach(function (id) {
-    if (id) idSet[String(id)] = true;
+  (ids || []).forEach(function (id) {
+    var cleanId = String(id || "").trim();
+    if (cleanId) idSet[cleanId] = true;
   });
 
+  var targetIds = Object.keys(idSet);
+  if (!targetIds.length) return 0;
+
+  var deletedCount = 0;
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
 
   try {
     var sheet = getSheet_();
     var lastRow = sheet.getLastRow();
-    if (lastRow < 2) return;
+    if (lastRow < 2) return 0;
 
     var values = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
     for (var index = values.length - 1; index >= 0; index -= 1) {
-      var id = String(values[index][0] || "");
-      if (idSet[id]) sheet.deleteRow(index + 2);
+      var id = String(values[index][0] || "").trim();
+      if (idSet[id]) {
+        sheet.deleteRow(index + 2);
+        deletedCount += 1;
+      }
     }
   } finally {
     lock.releaseLock();
   }
+
+  return deletedCount;
 }
 
 function getRowById_(sheet) {
