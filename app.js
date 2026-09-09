@@ -1,6 +1,7 @@
 const STORAGE_KEY = "wajibPajakFollowUpRecords";
 const PRODUCTION_STORAGE_KEY = "wajibPajakProductionRecords";
 const PRODUCTION_SYNC_META_KEY = "wajibPajakProductionLastSyncAt";
+const PRODUCTION_SUMMARY_STORAGE_KEY = "wajibPajakProductionSummary";
 const PENDING_UPSERT_STORAGE_KEY = "wajibPajakPendingRemoteUpserts";
 const PENDING_DELETE_STORAGE_KEY = "wajibPajakPendingRemoteDeletes";
 const REMOTE_REFRESH_INTERVAL_MS = 15000;
@@ -9,6 +10,7 @@ const REMOTE_WRITE_SETTLE_MS = 2000;
 const REMOTE_EMPTY_AFTER_WRITE_GUARD_MS = 20000;
 const REMOTE_RETRY_BASE_MS = 5000;
 const REMOTE_RETRY_MAX_MS = 120000;
+const PRODUCTION_SUMMARY_FALLBACK_REFRESH_MS = 300000;
 const DATABASE_JSONP_MAX_URL_LENGTH = 14000;
 const JASA_RAHARJA_RODA_4 = 143000;
 const DENDA_RODA_4_PER_3_BULAN = 35000;
@@ -117,15 +119,18 @@ let records = loadRecords().map(normalizeRecord);
 let productionRecords = loadProductionRecords().map(normalizeProductionRecord);
 let productionRecordsByPlate = createProductionIndex(productionRecords);
 let productionLastSyncAt = loadProductionLastSyncAt();
+let productionSummarySnapshot = loadProductionSummarySnapshot();
 let pendingRemoteUpserts = loadPendingRemoteUpserts().map(normalizeRecord);
 let pendingRemoteDeletes = loadPendingRemoteDeletes();
 let isRemoteRefreshing = false;
 let isProductionRefreshing = false;
+let isProductionSummaryRefreshing = false;
 let isPendingRemoteSyncing = false;
 let remoteMutationCount = 0;
 let remoteAutoRefreshStarted = false;
 let lastRemoteWriteAt = 0;
 let lastProductionRefreshAt = 0;
+let lastProductionSummaryFallbackAt = 0;
 let remoteRetryAttempt = 0;
 let remoteRetryTimer = null;
 let remoteFailureCount = 0;
@@ -218,6 +223,36 @@ function saveProductionLastSyncAt(value) {
   else localStorage.removeItem(PRODUCTION_SYNC_META_KEY);
 }
 
+function normalizeProductionSummary(summary) {
+  const source = summary || {};
+  const count = Number(source.count || source.total || 0);
+  const paidCount = Number(source.paidCount || source.lunas || 0);
+  const unpaidCount = Number(source.unpaidCount || source.belumLunas || Math.max(0, count - paidCount));
+  return {
+    count: count,
+    paidCount: paidCount,
+    unpaidCount: unpaidCount,
+    latestUpdate: String(source.latestUpdate || source.updatedAt || "")
+  };
+}
+
+function loadProductionSummarySnapshot() {
+  try {
+    return normalizeProductionSummary(JSON.parse(localStorage.getItem(PRODUCTION_SUMMARY_STORAGE_KEY)) || {});
+  } catch {
+    return normalizeProductionSummary({});
+  }
+}
+
+function saveProductionSummarySnapshot(summary) {
+  productionSummarySnapshot = normalizeProductionSummary(summary);
+  if (productionSummarySnapshot.count || productionSummarySnapshot.latestUpdate) {
+    localStorage.setItem(PRODUCTION_SUMMARY_STORAGE_KEY, JSON.stringify(productionSummarySnapshot));
+  } else {
+    localStorage.removeItem(PRODUCTION_SUMMARY_STORAGE_KEY);
+  }
+}
+
 function loadPendingRemoteUpserts() {
   try {
     return JSON.parse(localStorage.getItem(PENDING_UPSERT_STORAGE_KEY)) || [];
@@ -253,15 +288,41 @@ function createProductionIndex(items) {
   return index;
 }
 
+function getLatestProductionUpdateFromRecords(items) {
+  return (items || [])
+    .map(function (record) {
+      return String(record.updatedAt || "");
+    })
+    .filter(Boolean)
+    .sort()
+    .pop() || "";
+}
+
+function createProductionSummaryFromRecords(items) {
+  const sourceRecords = items || [];
+  const paidCount = sourceRecords.filter(function (record) {
+    return record.isPaid;
+  }).length;
+  return normalizeProductionSummary({
+    count: sourceRecords.length,
+    paidCount: paidCount,
+    unpaidCount: sourceRecords.length - paidCount,
+    latestUpdate: getLatestProductionUpdateFromRecords(sourceRecords)
+  });
+}
+
 function setProductionRecords(items) {
   productionRecords = (items || []).map(normalizeProductionRecord);
   productionRecordsByPlate = createProductionIndex(productionRecords);
   saveProductionRecords();
-  saveProductionLastSyncAt(new Date().toISOString());
+  const summary = createProductionSummaryFromRecords(productionRecords);
+  saveProductionSummarySnapshot(summary);
+  saveProductionLastSyncAt(summary.latestUpdate || new Date().toISOString());
 }
 
 function getDatabaseRequestTimeout(action) {
   if (action === "listProduction") return 60000;
+  if (action === "productionSummary") return 20000;
   if (action === "list") return 25000;
   return 30000;
 }
@@ -277,7 +338,7 @@ function buildDatabaseJsonpUrl(action, payload, callbackName) {
 }
 
 function shouldUseJsonpForDatabase(action, payload) {
-  if (action === "list" || action === "listProduction") return true;
+  if (action === "list" || action === "listProduction" || action === "productionSummary") return true;
   if (action !== "upsert" && action !== "deleteMany") return false;
   return buildDatabaseJsonpUrl(action, payload, "__wajibPajakDbCallbackCheck").length <= DATABASE_JSONP_MAX_URL_LENGTH;
 }
@@ -380,6 +441,11 @@ async function deleteRemoteRecords(ids) {
 async function fetchRemoteProductionRecords() {
   const result = await requestDatabase("listProduction");
   return Array.isArray(result.productionRecords) ? result.productionRecords.map(normalizeProductionRecord) : [];
+}
+
+async function fetchRemoteProductionSummary() {
+  const result = await requestDatabase("productionSummary");
+  return normalizeProductionSummary(result.productionSummary || result.summary || result);
 }
 
 async function replaceRemoteProductionRecords(scope, items) {
@@ -592,6 +658,12 @@ function shouldKeepLocalRecordsDuringRecentWrite(remoteRecords) {
   );
 }
 
+function isProductionSummaryNewer(summary) {
+  if (!summary || !summary.latestUpdate) return false;
+  const currentRecordLatest = getLatestProductionUpdateFromRecords(productionRecords);
+  return !currentRecordLatest || String(summary.latestUpdate) > String(currentRecordLatest);
+}
+
 async function refreshRemoteRecords(options) {
   const settings = options || {};
   if (!hasRemoteDatabase() || isRemoteRefreshing || isRemoteMutating()) return;
@@ -599,7 +671,7 @@ async function refreshRemoteRecords(options) {
   isRemoteRefreshing = true;
   try {
     const remoteRecords = await fetchRemoteRecords();
-    refreshRemoteProductionRecords({ silent: true });
+    refreshRemoteProductionSummary({ silent: true });
     if (shouldKeepLocalRecordsDuringRecentWrite(remoteRecords)) {
       markRemoteOnline("Online auto-sync");
       return;
@@ -620,6 +692,42 @@ async function refreshRemoteRecords(options) {
     scheduleRemoteRetry();
   } finally {
     isRemoteRefreshing = false;
+  }
+}
+
+async function refreshRemoteProductionSummary(options) {
+  const settings = options || {};
+  if (!hasRemoteDatabase() || isProductionSummaryRefreshing) return;
+
+  isProductionSummaryRefreshing = true;
+  try {
+    const remoteSummary = await fetchRemoteProductionSummary();
+    const shouldRefreshFullData =
+      settings.force ||
+      !productionRecords.length ||
+      isProductionSummaryNewer(remoteSummary) ||
+      Number(remoteSummary.count || 0) !== productionRecords.length;
+
+    saveProductionSummarySnapshot(remoteSummary);
+    if (remoteSummary.latestUpdate) saveProductionLastSyncAt(remoteSummary.latestUpdate);
+    updateProductionSummary();
+
+    if (shouldRefreshFullData) {
+      refreshRemoteProductionRecords({ force: true, silent: true });
+    }
+  } catch (error) {
+    console.warn(error);
+    const shouldFallbackFullRefresh =
+      settings.force ||
+      !productionRecords.length ||
+      Date.now() - lastProductionSummaryFallbackAt > PRODUCTION_SUMMARY_FALLBACK_REFRESH_MS;
+    if (shouldFallbackFullRefresh) {
+      lastProductionSummaryFallbackAt = Date.now();
+      refreshRemoteProductionRecords({ force: true, silent: true });
+    }
+    if (!settings.silent) showToast("Ringkasan SIAPP belum bisa diperbarui.");
+  } finally {
+    isProductionSummaryRefreshing = false;
   }
 }
 
@@ -685,7 +793,7 @@ async function initializeRemoteDatabase() {
       render();
       markRemoteOnline("Online auto-sync");
       syncPendingRemoteMutations();
-      refreshRemoteProductionRecords({ force: true, silent: true });
+      refreshRemoteProductionSummary({ force: true, silent: true });
       return;
     }
 
@@ -700,7 +808,7 @@ async function initializeRemoteDatabase() {
     render();
     markRemoteOnline("Online auto-sync");
     syncPendingRemoteMutations();
-    refreshRemoteProductionRecords({ force: true, silent: true });
+    refreshRemoteProductionSummary({ force: true, silent: true });
   } catch (error) {
     console.error(error);
     render();
@@ -1323,29 +1431,29 @@ function getProductionPeriodLabel(record) {
 }
 
 function getLatestProductionUpdate() {
-  return [productionLastSyncAt].concat(productionRecords
-    .map(function (record) {
-      return String(record.updatedAt || "");
-    }))
+  return [productionLastSyncAt, productionSummarySnapshot.latestUpdate, getLatestProductionUpdateFromRecords(productionRecords)]
     .filter(Boolean)
     .sort()
     .pop() || "";
 }
 
 function updateProductionSummary() {
-  const paidCount = productionRecords.filter(function (record) {
-    return record.isPaid;
-  }).length;
-  const unpaidCount = productionRecords.length - paidCount;
+  const localSummary = createProductionSummaryFromRecords(productionRecords);
+  const remoteSummary = normalizeProductionSummary(productionSummarySnapshot);
+  const useRemoteSummary = remoteSummary.count >= localSummary.count || String(remoteSummary.latestUpdate || "") >= String(localSummary.latestUpdate || "");
+  const activeSummary = useRemoteSummary ? remoteSummary : localSummary;
+  const paidCount = activeSummary.paidCount;
+  const unpaidCount = activeSummary.unpaidCount;
   const latestUpdate = getLatestProductionUpdate();
-  const summaryText = productionRecords.length
-    ? productionRecords.length + " nopol referensi tersimpan. " + paidCount + " lunas, " + unpaidCount + " belum lunas."
+  const totalCount = activeSummary.count || productionRecords.length;
+  const summaryText = totalCount
+    ? totalCount + " nopol referensi tersimpan. " + paidCount + " lunas, " + unpaidCount + " belum lunas."
     : "Belum ada data referensi.";
 
   if (controls.productionSummary) controls.productionSummary.textContent = summaryText;
   if (summary.siappReferenceCount) {
-    summary.siappReferenceCount.textContent = productionRecords.length
-      ? productionRecords.length + " data SIAPP"
+    summary.siappReferenceCount.textContent = totalCount
+      ? totalCount + " data SIAPP"
       : "0 data SIAPP";
   }
   if (summary.siappLastSync) {

@@ -65,6 +65,11 @@ function handleRequest_(e) {
       return output_(result, e);
     }
 
+    if (action === "productionSummary") {
+      result = { ok: true, productionSummary: getProductionSummary_() };
+      return output_(result, e);
+    }
+
     if (action === "upsert") {
       var saved = upsertRecords_(payload.records || []);
       result = { ok: true, records: saved };
@@ -173,6 +178,46 @@ function listProductionRecords_() {
   });
 
   return records;
+}
+
+function getProductionSummary_() {
+  var sheet = getProductionSheet_();
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return {
+      count: 0,
+      paidCount: 0,
+      unpaidCount: 0,
+      latestUpdate: ""
+    };
+  }
+
+  var values = sheet.getRange(2, 9, lastRow - 1, 5).getValues();
+  var paidCount = 0;
+  var latestUpdate = "";
+
+  values.forEach(function (row) {
+    var status = String(row[0] || "").toUpperCase();
+    var isPaid = parseBoolean_(row[1]) || status === "LUNAS";
+    var updatedAt = normalizeDateTimeText_(row[4]);
+
+    if (isPaid) paidCount += 1;
+    if (updatedAt && updatedAt > latestUpdate) latestUpdate = updatedAt;
+  });
+
+  return {
+    count: values.length,
+    paidCount: paidCount,
+    unpaidCount: values.length - paidCount,
+    latestUpdate: latestUpdate
+  };
+}
+
+function normalizeDateTimeText_(value) {
+  if (Object.prototype.toString.call(value) === "[object Date]" && !isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+  return String(value || "");
 }
 
 function upsertRecords_(records) {
