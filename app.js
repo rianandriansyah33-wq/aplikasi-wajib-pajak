@@ -889,7 +889,7 @@ async function refreshRemoteRecords(options) {
     if (await migrateLocalTaxpayersToSupabase(localRecordsBeforeRemoteLoad, remoteRecords)) {
       remoteRecords = await fetchRemoteRecords();
     }
-    refreshRemoteProductionSummary({ silent: true });
+    await refreshRemoteProductionSummary({ silent: true });
     if (shouldKeepLocalRecordsDuringRecentWrite(remoteRecords)) {
       markRemoteOnline("Online auto-sync");
       return;
@@ -931,7 +931,7 @@ async function refreshRemoteProductionSummary(options) {
     updateProductionSummary();
 
     if (shouldRefreshFullData) {
-      refreshRemoteProductionRecords({ force: true, silent: true });
+      await refreshRemoteProductionRecords({ force: true, silent: true });
     }
   } catch (error) {
     console.warn(error);
@@ -941,7 +941,7 @@ async function refreshRemoteProductionSummary(options) {
       Date.now() - lastProductionSummaryFallbackAt > PRODUCTION_SUMMARY_FALLBACK_REFRESH_MS;
     if (shouldFallbackFullRefresh) {
       lastProductionSummaryFallbackAt = Date.now();
-      refreshRemoteProductionRecords({ force: true, silent: true });
+      await refreshRemoteProductionRecords({ force: true, silent: true });
     }
     if (!settings.silent) showToast("Ringkasan SIAPP belum bisa diperbarui.");
   } finally {
@@ -1011,11 +1011,8 @@ async function initializeRemoteDatabase() {
       render();
       markRemoteOnline("Online auto-sync");
       syncPendingRemoteMutations();
-      migrateLocalProductionRecordsToRemote().then(function () {
-        refreshRemoteProductionSummary({ force: true, silent: true });
-      }).catch(function (error) {
-        console.warn(error);
-      });
+      await migrateLocalProductionRecordsToRemote();
+      await refreshRemoteProductionRecords({ force: true, silent: true });
       refreshRemoteProductionSummary({ force: true, silent: true });
       return;
     }
@@ -1031,11 +1028,8 @@ async function initializeRemoteDatabase() {
     render();
     markRemoteOnline("Online auto-sync");
     syncPendingRemoteMutations();
-    migrateLocalProductionRecordsToRemote().then(function () {
-      refreshRemoteProductionSummary({ force: true, silent: true });
-    }).catch(function (error) {
-      console.warn(error);
-    });
+    await migrateLocalProductionRecordsToRemote();
+    await refreshRemoteProductionRecords({ force: true, silent: true });
     refreshRemoteProductionSummary({ force: true, silent: true });
   } catch (error) {
     console.error(error);
@@ -2541,27 +2535,12 @@ function render() {
       } else if (productionMatch) {
         siappButton.classList.add("is-unpaid");
         if (siappLabel) siappLabel.textContent = "Belum lunas";
+      } else {
+        siappButton.classList.add("is-unpaid");
+        if (siappLabel) siappLabel.textContent = "Belum tersinkron";
       }
-
-      siappButton.addEventListener("click", async function (event) {
-        event.preventDefault();
-        event.stopPropagation();
-        siappButton.disabled = true;
-        if (siappLabel) siappLabel.textContent = "Mengecek...";
-        await checkRecordAgainstSiapp(record.id);
-        siappButton.disabled = false;
-        siappButton.classList.remove("is-paid", "is-unpaid");
-        const latestMatch = getProductionMatch(record);
-        if (latestMatch && latestMatch.isPaid) {
-          siappButton.classList.add("is-paid");
-          if (siappLabel) siappLabel.textContent = "Lunas SIAPP";
-        } else if (latestMatch) {
-          siappButton.classList.add("is-unpaid");
-          if (siappLabel) siappLabel.textContent = "Belum lunas";
-        } else if (siappLabel) {
-          siappLabel.textContent = "Cek SIAPP";
-        }
-      });
+      siappButton.disabled = true;
+      siappButton.setAttribute("aria-label", "Status pembayaran otomatis dari data SIAPP tersinkron");
     }
 
     card.addEventListener("click", function () {
