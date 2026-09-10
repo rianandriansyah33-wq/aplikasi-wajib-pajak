@@ -1,5 +1,6 @@
--- Jalankan seluruh file ini sekali di Supabase: SQL Editor > New query > Run.
--- Akses data wajib pajak dikunci hanya untuk email pemilik aplikasi.
+-- Jalankan seluruh file ini di Supabase: SQL Editor > New query > Run.
+-- Aplikasi memakai akses langsung tanpa login email. Jangan bagikan URL aplikasi
+-- kepada umum karena data dapat dibaca dan diubah oleh pengguna aplikasi.
 
 create table if not exists public.taxpayers (
   id text primary key,
@@ -66,42 +67,25 @@ for each row execute function public.set_updated_at();
 alter table public.taxpayers enable row level security;
 alter table public.production_records enable row level security;
 
+-- Hapus kebijakan versi lama, lalu izinkan aplikasi tanpa login membaca dan
+-- memperbarui kedua tabel melalui publishable key.
 drop policy if exists taxpayer_owner_only on public.taxpayers;
-create policy taxpayer_owner_only
+drop policy if exists taxpayer_public_access on public.taxpayers;
+create policy taxpayer_public_access
 on public.taxpayers
 for all
-to authenticated
-using ((auth.jwt() ->> 'email') = 'rianandriansyah33@gmail.com')
-with check ((auth.jwt() ->> 'email') = 'rianandriansyah33@gmail.com');
-
-drop policy if exists production_owner_read on public.production_records;
-create policy production_owner_read
-on public.production_records
-for select
-to authenticated
-using ((auth.jwt() ->> 'email') = 'rianandriansyah33@gmail.com');
-
-drop policy if exists production_owner_write on public.production_records;
-create policy production_owner_write
-on public.production_records
-for all
-to authenticated
-using ((auth.jwt() ->> 'email') = 'rianandriansyah33@gmail.com')
-with check ((auth.jwt() ->> 'email') = 'rianandriansyah33@gmail.com');
-
--- Bookmark SIAPP perlu menulis hasil sinkron tanpa sesi login browser aplikasi.
--- Ia tidak memperoleh izin membaca data apa pun.
-drop policy if exists production_sync_insert on public.production_records;
-create policy production_sync_insert
-on public.production_records
-for insert
 to anon
+using (true)
 with check (true);
 
+drop policy if exists production_owner_read on public.production_records;
+drop policy if exists production_owner_write on public.production_records;
+drop policy if exists production_sync_insert on public.production_records;
 drop policy if exists production_sync_update on public.production_records;
-create policy production_sync_update
+drop policy if exists production_public_access on public.production_records;
+create policy production_public_access
 on public.production_records
-for update
+for all
 to anon
 using (true)
 with check (true);
@@ -116,4 +100,4 @@ select
   max(updated_at) as latest_update
 from public.production_records;
 
-grant select on public.production_summary to authenticated;
+grant select on public.production_summary to anon;

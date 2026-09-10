@@ -8,7 +8,7 @@ Data utama aplikasi disimpan di Supabase. Data lokal browser hanya dipakai sebag
 
 Cara paling sederhana:
 
-1. Upload folder `aplikasi-wajib-pajak` atau file ZIP aplikasi ini ke hosting statis seperti Netlify.
+1. Upload folder `aplikasi-wajib-pajak` ke GitHub Pages.
 2. Setelah upload selesai, hosting akan memberi link website.
 3. Buka link tersebut dari HP.
 
@@ -22,11 +22,10 @@ Sebelum membuka aplikasi pertama kali:
 
 1. Buka Supabase > `SQL Editor` > `New query`.
 2. Tempel seluruh isi `supabase-schema.sql`, lalu klik `Run`.
-3. Buka `Authentication` > `URL Configuration`, lalu masukkan alamat aplikasi GitHub Pages sebagai `Redirect URL`.
-4. Upload ulang file aplikasi ke GitHub Pages.
-5. Saat aplikasi dibuka, masukkan email pemilik dan tekan `Kirim Tautan Masuk`.
+3. Upload ulang file aplikasi ke GitHub Pages.
+4. Buka ulang aplikasi. Tidak ada proses masuk memakai email.
 
-Setelah tautan masuk dibuka dari email, data laptop dan HP memakai database Supabase yang sama.
+Data laptop dan HP akan memakai database Supabase yang sama.
 
 Aplikasi akan mengecek Google Sheet otomatis setiap sekitar 10 detik, dan juga langsung mengecek ulang saat tab/browser dibuka kembali. Jadi data dari HP atau laptop lain bisa muncul tanpa refresh manual.
 
@@ -69,4 +68,4 @@ Setelah data SIAPP tersinkron, setiap kartu wajib pajak punya tombol `Cek SIAPP`
 
 Aplikasi menyimpan referensi pada tabel `production_records`, lalu memakainya untuk mengecek nopol secara otomatis.
 
-Catatan keamanan: jangan bagikan link aplikasi ke umum jika data berisi nama dan nomor WhatsApp wajib pajak.
+Catatan keamanan: karena aplikasi dibuka tanpa login email, jangan bagikan link aplikasi ke umum jika data berisi nama dan nomor WhatsApp wajib pajak.

@@ -85,11 +85,7 @@ const controls = {
   detailContent: document.querySelector("#detailContent"),
   siappOverlay: document.querySelector("#siappOverlay"),
   siappCloseBtn: document.querySelector("#siappCloseBtn"),
-  siappFrame: document.querySelector("#siappFrame"),
-  authOverlay: document.querySelector("#authOverlay"),
-  authForm: document.querySelector("#authForm"),
-  authEmail: document.querySelector("#authEmail"),
-  authStatus: document.querySelector("#authStatus")
+  siappFrame: document.querySelector("#siappFrame")
 };
 
 const summary = {
@@ -140,8 +136,6 @@ let remoteRetryTimer = null;
 let remoteFailureCount = 0;
 let remoteConnectionState = "unknown";
 let activeDetailRecordId = "";
-let supabaseClient = null;
-let supabaseSession = null;
 let hasAttemptedLocalProductionMigration = false;
 
 function getDatabaseConfig() {
@@ -150,8 +144,7 @@ function getDatabaseConfig() {
     provider: String(config.DATABASE_PROVIDER || "google-script").trim().toLowerCase(),
     googleScriptUrl: String(config.GOOGLE_SCRIPT_URL || "").trim(),
     supabaseUrl: String(config.SUPABASE_URL || "").trim().replace(/\/$/, ""),
-    supabasePublishableKey: String(config.SUPABASE_PUBLISHABLE_KEY || "").trim(),
-    supabaseAllowedEmail: String(config.SUPABASE_ALLOWED_EMAIL || "").trim().toLowerCase()
+    supabasePublishableKey: String(config.SUPABASE_PUBLISHABLE_KEY || "").trim()
   };
 }
 
@@ -392,18 +385,6 @@ async function requestDatabase(action, payload) {
   return Object.assign({ ok: true }, payload || {});
 }
 
-function getSupabaseClient() {
-  if (!isSupabaseDatabase() || !window.supabase) return null;
-  if (!supabaseClient) {
-    supabaseClient = window.supabase.createClient(
-      databaseConfig.supabaseUrl,
-      databaseConfig.supabasePublishableKey,
-      { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }
-    );
-  }
-  return supabaseClient;
-}
-
 function toSupabaseTaxpayerRow(record) {
   const item = normalizeRecord(record);
   return {
@@ -487,26 +468,12 @@ function fromSupabaseProductionRow(row) {
   });
 }
 
-async function getSupabaseAccessToken() {
-  const client = getSupabaseClient();
-  if (!client) throw new Error("Supabase belum siap.");
-  const response = await client.auth.getSession();
-  const session = response.data && response.data.session;
-  if (!session || !session.access_token) throw new Error("Masuk ke database diperlukan.");
-  if (databaseConfig.supabaseAllowedEmail && String(session.user && session.user.email || "").toLowerCase() !== databaseConfig.supabaseAllowedEmail) {
-    throw new Error("Email ini tidak memiliki akses database.");
-  }
-  supabaseSession = session;
-  return session.access_token;
-}
-
 async function requestSupabaseRest(path, options) {
-  const token = await getSupabaseAccessToken();
   const requestOptions = options || {};
   const response = await fetch(databaseConfig.supabaseUrl + "/rest/v1/" + path, Object.assign({}, requestOptions, {
     headers: Object.assign({
       apikey: databaseConfig.supabasePublishableKey,
-      Authorization: "Bearer " + token
+      Authorization: "Bearer " + databaseConfig.supabasePublishableKey
     }, requestOptions.headers || {})
   }));
   if (!response.ok) throw new Error("Supabase: " + response.status);
@@ -1044,53 +1011,6 @@ async function initializeRemoteDatabase() {
     showToast("Database online gagal tersambung, memakai data lokal.");
     scheduleRemoteRetry();
   }
-}
-
-function showSupabaseLogin(message) {
-  if (controls.authEmail && databaseConfig.supabaseAllowedEmail) {
-    controls.authEmail.value = databaseConfig.supabaseAllowedEmail;
-  }
-  if (controls.authStatus) controls.authStatus.textContent = message || "Masuk diperlukan untuk membuka database.";
-  if (controls.authOverlay) controls.authOverlay.hidden = false;
-  updateSyncStatus("Menunggu masuk", "");
-}
-
-function hideSupabaseLogin() {
-  if (controls.authOverlay) controls.authOverlay.hidden = true;
-}
-
-async function initializeApplicationDatabase() {
-  if (!isSupabaseDatabase()) {
-    initializeRemoteDatabase();
-    return;
-  }
-
-  const client = getSupabaseClient();
-  if (!client) {
-    showSupabaseLogin("Library Supabase belum termuat. Coba buka ulang aplikasi.");
-    return;
-  }
-
-  const sessionResult = await client.auth.getSession();
-  const session = sessionResult.data && sessionResult.data.session;
-  if (!session || (databaseConfig.supabaseAllowedEmail && String(session.user && session.user.email || "").toLowerCase() !== databaseConfig.supabaseAllowedEmail)) {
-    showSupabaseLogin(session ? "Email ini tidak memiliki akses ke database." : "Masuk dengan email pemilik aplikasi.");
-  } else {
-    supabaseSession = session;
-    hideSupabaseLogin();
-    initializeRemoteDatabase();
-  }
-
-  client.auth.onAuthStateChange(function (_event, nextSession) {
-    if (!nextSession) return;
-    if (databaseConfig.supabaseAllowedEmail && String(nextSession.user && nextSession.user.email || "").toLowerCase() !== databaseConfig.supabaseAllowedEmail) {
-      showSupabaseLogin("Email ini tidak memiliki akses ke database.");
-      return;
-    }
-    supabaseSession = nextSession;
-    hideSupabaseLogin();
-    initializeRemoteDatabase();
-  });
 }
 
 function todayIso() {
@@ -3145,30 +3065,6 @@ if (controls.siappOverlay) {
   });
 }
 
-if (controls.authForm) {
-  controls.authForm.addEventListener("submit", async function (event) {
-    event.preventDefault();
-    const email = String(controls.authEmail && controls.authEmail.value || "").trim().toLowerCase();
-    if (!email) return;
-    if (databaseConfig.supabaseAllowedEmail && email !== databaseConfig.supabaseAllowedEmail) {
-      if (controls.authStatus) controls.authStatus.textContent = "Gunakan email pemilik aplikasi.";
-      return;
-    }
-    const client = getSupabaseClient();
-    if (!client) return;
-    if (controls.authStatus) controls.authStatus.textContent = "Mengirim tautan masuk...";
-    const response = await client.auth.signInWithOtp({
-      email: email,
-      options: { emailRedirectTo: window.location.href.split("#")[0] }
-    });
-    if (response.error) {
-      if (controls.authStatus) controls.authStatus.textContent = "Tautan masuk belum dapat dikirim. Coba lagi.";
-      return;
-    }
-    if (controls.authStatus) controls.authStatus.textContent = "Tautan masuk telah dikirim. Buka email ini lalu kembali ke aplikasi.";
-  });
-}
-
 document.addEventListener("keydown", function (event) {
   if (event.key === "Escape") closeMobileMenu();
   if (event.key === "Escape" && controls.siappOverlay && !controls.siappOverlay.hidden) {
@@ -3259,4 +3155,4 @@ updateProductionSummary();
 updateProductionCheckPreview();
 updateSiappAutofillPanel();
 startMobileHeaderAutoHide();
-initializeApplicationDatabase();
+initializeRemoteDatabase();
