@@ -198,7 +198,7 @@ function getProductionSummary_() {
 
   values.forEach(function (row) {
     var status = String(row[0] || "").toUpperCase();
-    var isPaid = parseBoolean_(row[1]) || status === "LUNAS";
+    var isPaid = isProductionPaid_(row[1], status, row[3]);
     var updatedAt = normalizeDateTimeText_(row[4]);
 
     if (isPaid) paidCount += 1;
@@ -657,7 +657,7 @@ function normalizeProductionRecord_(record, scope) {
   var year = Number(record.year || normalizedScope.year);
   var plateNumber = String(record.plateNumber || "").toUpperCase().trim();
   var plateKey = String(record.plateKey || plateNumber).toUpperCase().replace(/[^A-Z0-9]/g, "");
-  var isPaid = parseBoolean_(record.isPaid) || String(record.status || "").toUpperCase() === "LUNAS";
+  var isPaid = isProductionPaid_(record.isPaid, record.status, record.sourceText);
   var taxBaseAmount = Number(String(record.taxBaseAmount || "0").replace(/\D/g, "")) || extractSiappTaxBaseFromSourceText_(record.sourceText || "");
   var taxValidDate = String(record.taxValidDate || "") || extractSiappTaxValidDateFromSourceText_(record.sourceText || "");
   var recordedDate = String(record.recordedDate || "") || extractSiappRecordedDateFromSourceText_(record.sourceText || "");
@@ -691,6 +691,12 @@ function normalizeProductionRecord_(record, scope) {
 function parseBoolean_(value) {
   var text = String(value || "").toLowerCase();
   return value === true || text === "true" || text === "1" || text === "ya";
+}
+
+function isProductionPaid_(isPaidValue, status, sourceText) {
+  if (parseBoolean_(isPaidValue)) return true;
+  var paymentText = [status, sourceText].join(" ").toUpperCase();
+  return /\b(LUNAS|SUDAH\s+BAYAR|TERBAYAR|PAID)\b/.test(paymentText);
 }
 
 function isSameProductionScope_(record, scope) {

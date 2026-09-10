@@ -1245,6 +1245,18 @@ function detectProductionPayment(rawText) {
   };
 }
 
+function isProductionRecordPaid(record) {
+  if (!record) return false;
+  const paidFlag = String(record.isPaid == null ? "" : record.isPaid).trim().toLowerCase();
+  if (record.isPaid === true || ["true", "1", "ya"].includes(paidFlag)) return true;
+
+  return detectProductionPayment([
+    record.status,
+    record.sourceText,
+    record.paidDate
+  ].join(" ")).isPaid;
+}
+
 function getProductionOwnerFromContext(context, plateNumber) {
   const compactText = normalizeUpperText(context).replace(/\s+/g, " ");
   const platePattern = getPlateKey(plateNumber).replace(/([A-Z])(?=\d)/, "$1\\s*").replace(/(\d)(?=[A-Z])/, "$1\\s*");
@@ -1266,6 +1278,8 @@ function normalizeProductionRecord(record) {
   const taxBaseAmount = getNominalNumber(record.taxBaseAmount || record.siappBaseAmount || record.baseAmount || 0) || extractSiappTaxBaseFromSourceText(record.sourceText || "");
   const taxValidDate = toIsoDate(record.taxValidDate || "") || extractSiappTaxValidDateFromSourceText(record.sourceText || "");
   const recordedDate = toIsoDate(record.recordedDate || "") || extractSiappRecordedDateFromSourceText(record.sourceText || "");
+  const payment = detectProductionPayment([record.status, record.sourceText, record.paidDate].join(" "));
+  const isPaid = isProductionRecordPaid(record);
   const latePenalty = taxBaseAmount ? calculateLatePenalty(taxValidDate) : 0;
   const calculatedTaxPotential = getNominalNumber(record.calculatedTaxPotential || record.taxPotential || 0) || calculateTaxPotentialFromSiapp(taxBaseAmount, taxValidDate);
   return {
@@ -1277,9 +1291,9 @@ function normalizeProductionRecord(record) {
     plateKey: plateKey,
     ownerName: cleanOwnerName(record.ownerName || ""),
     entryNumber: String(record.entryNumber || ""),
-    status: String(record.status || "Belum terdeteksi lunas"),
-    isPaid: record.isPaid === true || String(record.isPaid || "").toLowerCase() === "true" || String(record.status || "").toUpperCase() === "LUNAS",
-    paidDate: String(record.paidDate || ""),
+    status: isPaid ? "Lunas" : String(record.status || "Belum terdeteksi lunas"),
+    isPaid: isPaid,
+    paidDate: String(record.paidDate || payment.paidDate || ""),
     recordedDate: recordedDate,
     taxValidDate: taxValidDate,
     taxBaseAmount: taxBaseAmount,
