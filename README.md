@@ -25,9 +25,15 @@ Sebelum membuka aplikasi pertama kali:
 3. Upload ulang file aplikasi ke GitHub Pages.
 4. Buka ulang aplikasi. Tidak ada proses masuk memakai email.
 
-Data laptop dan HP akan memakai database Supabase yang sama.
+Data laptop dan HP akan memakai database Supabase yang sama. Aplikasi tidak lagi memerlukan Google Sheet atau Apps Script.
 
-Aplikasi akan mengecek Google Sheet otomatis setiap sekitar 10 detik, dan juga langsung mengecek ulang saat tab/browser dibuka kembali. Jadi data dari HP atau laptop lain bisa muncul tanpa refresh manual.
+## Migrasi penuh dari Google Sheet
+
+Sebelum menghapus Google Sheet, buka aplikasi lama pada browser yang biasa dipakai lalu tekan tombol `JSON`. Berkas cadangan baru berisi data wajib pajak dan Buku Produksi SIAPP.
+
+Setelah Supabase siap dan aplikasi versi terbaru sudah diunggah ke GitHub Pages, buka aplikasi lalu gunakan tombol `Import` untuk memilih berkas JSON tersebut. Data akan dikirim ke Supabase. Periksa jumlah data pada dashboard dan lakukan satu kali Sinkron Lengkap SIAPP sebelum menghapus Google Sheet.
+
+Aplikasi juga akan mencoba memindahkan data lokal yang sudah tersimpan di browser ke Supabase saat pertama kali terhubung. Data yang lebih baru di Supabase tidak akan ditimpa oleh data cache yang lebih lama.
 
 ## Aturan surat
 

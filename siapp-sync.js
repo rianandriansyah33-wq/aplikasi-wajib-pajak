@@ -238,12 +238,13 @@
   }
 
   function getPaidInfo(cells) {
-    const rowText = normalizeText(cells.join(" "));
     const dateColumn = normalizeText(cells[5] || "");
     const statusColumn = normalizeText(cells[6] || "");
     const dateMatches = dateColumn.match(/\d{2}\/\d{2}\/\d{4}/g) || [];
-    const hasPaidWord = /\b(LUNAS|SUDAH\s+BAYAR|TERBAYAR|PAID)\b/.test(rowText + " " + statusColumn);
-    const isPaid = hasPaidWord || dateMatches.length >= 3;
+    const paymentText = dateColumn + " " + statusColumn;
+    const hasUnpaidMarker = /\b(BELUM|TIDAK)\s+(?:TERDETEKSI\s+)?(?:LUNAS|BAYAR)\b/.test(paymentText);
+    const hasPaidWord = /\b(LUNAS|SUDAH\s+BAYAR|TERBAYAR|PAID)\b/.test(paymentText);
+    const isPaid = !hasUnpaidMarker && (hasPaidWord || dateMatches.length >= 3);
 
     return {
       isPaid: isPaid,

@@ -674,9 +674,9 @@ function normalizeProductionRecord_(record, scope) {
     plateKey: plateKey,
     ownerName: cleanOwnerName_(record.ownerName),
     entryNumber: String(record.entryNumber || ""),
-    status: String(record.status || (isPaid ? "Lunas" : "Belum terdeteksi lunas")),
+    status: isPaid ? "Lunas" : "Belum terdeteksi lunas",
     isPaid: isPaid,
-    paidDate: String(record.paidDate || ""),
+    paidDate: isPaid ? String(record.paidDate || "") : "",
     sourceText: String(record.sourceText || ""),
     updatedAt: String(record.updatedAt || new Date().toISOString()),
     taxValidDate: taxValidDate,
@@ -694,9 +694,14 @@ function parseBoolean_(value) {
 }
 
 function isProductionPaid_(isPaidValue, status, sourceText) {
-  if (parseBoolean_(isPaidValue)) return true;
+  var sourcePaymentText = String(sourceText || "").toUpperCase();
   var paymentText = [status, sourceText].join(" ").toUpperCase();
-  return /\b(LUNAS|SUDAH\s+BAYAR|TERBAYAR|PAID)\b/.test(paymentText);
+  var hasUnpaidMarker = /\b(BELUM|TIDAK)\s+(?:TERDETEKSI\s+)?(?:LUNAS|BAYAR)\b/.test(paymentText);
+  var hasPaidWord = /\b(LUNAS|SUDAH\s+BAYAR|TERBAYAR|PAID)\b/.test(sourcePaymentText || paymentText);
+  var sourceDates = sourcePaymentText.match(/\d{2}\/\d{2}\/\d{4}/g) || [];
+  if (sourcePaymentText) return !hasUnpaidMarker && (hasPaidWord || sourceDates.length >= 3);
+  if (hasUnpaidMarker) return false;
+  return parseBoolean_(isPaidValue) || hasPaidWord;
 }
 
 function isSameProductionScope_(record, scope) {

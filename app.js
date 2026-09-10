@@ -137,6 +137,7 @@ let remoteFailureCount = 0;
 let remoteConnectionState = "unknown";
 let activeDetailRecordId = "";
 let hasAttemptedLocalProductionMigration = false;
+let hasAttemptedLocalTaxpayerMigration = false;
 
 function getDatabaseConfig() {
   const config = window.APP_CONFIG || {};
@@ -622,15 +623,43 @@ async function fetchRemoteProductionSummary() {
 
 async function migrateLocalProductionRecordsToRemote() {
   if (!isSupabaseDatabase() || hasAttemptedLocalProductionMigration || !productionRecords.length) return;
-  hasAttemptedLocalProductionMigration = true;
   const remoteProduction = await fetchRemoteProductionRecords();
-  if (remoteProduction.length) return;
+  const remoteById = new Map(remoteProduction.map(function (record) {
+    return [record.id, record];
+  }));
+  const itemsToMigrate = productionRecords.filter(function (record) {
+    const remoteRecord = remoteById.get(record.id);
+    return !remoteRecord || String(record.updatedAt || "") > String(remoteRecord.updatedAt || "");
+  });
+  hasAttemptedLocalProductionMigration = true;
+  if (!itemsToMigrate.length) return;
 
-  const batches = chunkItems(productionRecords, 100);
+  const batches = chunkItems(itemsToMigrate, 100);
   for (let index = 0; index < batches.length; index += 1) {
     await requestDatabase("upsertProduction", { productionRecords: batches[index] });
   }
-  showToast("Data Buku Produksi lokal dipindahkan ke Supabase.", "connection-success");
+  showToast(itemsToMigrate.length + " data Buku Produksi dipindahkan ke Supabase.", "connection-success");
+}
+
+async function migrateLocalTaxpayersToSupabase(localRecords, remoteRecords) {
+  if (!isSupabaseDatabase() || hasAttemptedLocalTaxpayerMigration || !localRecords.length) return false;
+  const remoteById = new Map(remoteRecords.map(function (record) {
+    return [record.id, record];
+  }));
+  const itemsToMigrate = localRecords.filter(function (record) {
+    const normalizedRecord = normalizeRecord(record);
+    const remoteRecord = remoteById.get(normalizedRecord.id);
+    return !remoteRecord || String(normalizedRecord.updatedAt || "") > String(remoteRecord.updatedAt || "");
+  });
+  hasAttemptedLocalTaxpayerMigration = true;
+  if (!itemsToMigrate.length) return false;
+
+  const batches = chunkItems(itemsToMigrate, 100);
+  for (let index = 0; index < batches.length; index += 1) {
+    await requestDatabase("upsert", { records: batches[index] });
+  }
+  showToast(itemsToMigrate.length + " data wajib pajak dipindahkan ke Supabase.", "connection-success");
+  return true;
 }
 
 async function replaceRemoteProductionRecords(scope, items) {
@@ -855,7 +884,11 @@ async function refreshRemoteRecords(options) {
 
   isRemoteRefreshing = true;
   try {
-    const remoteRecords = await fetchRemoteRecords();
+    const localRecordsBeforeRemoteLoad = records.slice();
+    let remoteRecords = await fetchRemoteRecords();
+    if (await migrateLocalTaxpayersToSupabase(localRecordsBeforeRemoteLoad, remoteRecords)) {
+      remoteRecords = await fetchRemoteRecords();
+    }
     refreshRemoteProductionSummary({ silent: true });
     if (shouldKeepLocalRecordsDuringRecentWrite(remoteRecords)) {
       markRemoteOnline("Online auto-sync");
@@ -1430,9 +1463,10 @@ function extractFirstDate(value) {
 function detectProductionPayment(rawText) {
   const text = normalizeUpperText(rawText);
   const dates = text.match(/\d{2}\/\d{2}\/\d{4}/g) || [];
+  const hasUnpaidMarker = /\b(BELUM|TIDAK)\s+(?:TERDETEKSI\s+)?(?:LUNAS|BAYAR)\b/.test(text);
   const hasPaidWord = /\b(LUNAS|SUDAH\s+BAYAR|TERBAYAR|PAID)\b/.test(text);
   const hasThreeDates = dates.length >= 3;
-  const isPaid = hasPaidWord || hasThreeDates;
+  const isPaid = !hasUnpaidMarker && (hasPaidWord || hasThreeDates);
   return {
     isPaid: isPaid,
     status: isPaid ? "Lunas" : "Belum terdeteksi lunas",
@@ -1442,14 +1476,16 @@ function detectProductionPayment(rawText) {
 
 function isProductionRecordPaid(record) {
   if (!record) return false;
+  const sourceText = String(record.sourceText || "").trim();
+  if (sourceText) return detectProductionPayment(sourceText).isPaid;
+
+  const fallbackPayment = detectProductionPayment([record.status, record.paidDate].join(" "));
+  if (!fallbackPayment.isPaid && /\b(BELUM|TIDAK)\s+(?:TERDETEKSI\s+)?(?:LUNAS|BAYAR)\b/.test(normalizeUpperText([record.status, record.paidDate].join(" ")))) {
+    return false;
+  }
   const paidFlag = String(record.isPaid == null ? "" : record.isPaid).trim().toLowerCase();
   if (record.isPaid === true || ["true", "1", "ya"].includes(paidFlag)) return true;
-
-  return detectProductionPayment([
-    record.status,
-    record.sourceText,
-    record.paidDate
-  ].join(" ")).isPaid;
+  return fallbackPayment.isPaid;
 }
 
 function getProductionOwnerFromContext(context, plateNumber) {
@@ -1486,9 +1522,9 @@ function normalizeProductionRecord(record) {
     plateKey: plateKey,
     ownerName: cleanOwnerName(record.ownerName || ""),
     entryNumber: String(record.entryNumber || ""),
-    status: isPaid ? "Lunas" : String(record.status || "Belum terdeteksi lunas"),
+    status: isPaid ? "Lunas" : "Belum terdeteksi lunas",
     isPaid: isPaid,
-    paidDate: String(record.paidDate || payment.paidDate || ""),
+    paidDate: isPaid ? String(record.paidDate || payment.paidDate || "") : "",
     recordedDate: recordedDate,
     taxValidDate: taxValidDate,
     taxBaseAmount: taxBaseAmount,
@@ -2726,7 +2762,14 @@ function toCsv(recordsToExport) {
 }
 
 function exportJsonData() {
-  downloadFile("backup-wajib-pajak-" + todayIso() + ".json", "application/json", JSON.stringify(records, null, 2));
+  const backup = {
+    format: "wajib-pajak-full-backup",
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    taxpayers: records,
+    productionRecords: productionRecords
+  };
+  downloadFile("backup-wajib-pajak-lengkap-" + todayIso() + ".json", "application/json", JSON.stringify(backup, null, 2));
 }
 
 function exportCsvData() {
@@ -3109,12 +3152,15 @@ controls.importFile.addEventListener("change", async function (event) {
   if (!file) return;
   try {
     const imported = JSON.parse(await file.text());
-    if (!Array.isArray(imported)) throw new Error("Format tidak valid");
+    const importedTaxpayers = Array.isArray(imported) ? imported : imported && imported.taxpayers;
+    const importedProduction = Array.isArray(imported && imported.productionRecords) ? imported.productionRecords : [];
+    if (!Array.isArray(importedTaxpayers)) throw new Error("Format tidak valid");
     const previousRecords = records.slice();
     const previousIds = records.map(function (record) {
       return record.id;
     });
-    records = imported.map(normalizeRecord);
+    records = importedTaxpayers.map(normalizeRecord);
+    if (importedProduction.length) setProductionRecords(importedProduction);
     saveRecords();
     resetForm();
     render();
@@ -3123,13 +3169,19 @@ controls.importFile.addEventListener("change", async function (event) {
       try {
         await deleteRemoteRecords(previousIds);
         const savedRecords = await saveRemoteRecords(records);
+        if (importedProduction.length) {
+          const productionBatches = chunkItems(productionRecords, 100);
+          for (let index = 0; index < productionBatches.length; index += 1) {
+            await requestDatabase("upsertProduction", { productionRecords: productionBatches[index] });
+          }
+        }
         if (savedRecords.length) {
           records = savedRecords;
           saveRecords();
           render();
         }
         markRemoteOnline("Online tersambung");
-        showToast("Data berhasil diimport dan tersinkron.");
+        showToast("Data lengkap berhasil diimport dan tersinkron.");
         return;
       } catch (error) {
         console.error(error);
