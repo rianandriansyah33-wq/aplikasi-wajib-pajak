@@ -5,7 +5,11 @@
   const copyButton = document.querySelector("#copyBookmarkletBtn");
   const watchIntervalSelect = document.querySelector("#watchIntervalSelect");
   const statusText = document.querySelector("#helperStatus");
-  const googleScriptUrl = window.APP_CONFIG && window.APP_CONFIG.GOOGLE_SCRIPT_URL;
+  const appConfig = window.APP_CONFIG || {};
+  const googleScriptUrl = appConfig.GOOGLE_SCRIPT_URL;
+  const databaseProvider = String(appConfig.DATABASE_PROVIDER || "google-script").toLowerCase();
+  const supabaseUrl = appConfig.SUPABASE_URL;
+  const supabasePublishableKey = appConfig.SUPABASE_PUBLISHABLE_KEY;
   const syncScriptUrl = new URL("siapp-sync.js", window.location.href).href;
 
   function showStatus(message) {
@@ -25,6 +29,9 @@
   function buildBookmarklet(mode) {
     const config = {
       googleScriptUrl: googleScriptUrl,
+      databaseProvider: databaseProvider,
+      supabaseUrl: supabaseUrl,
+      supabasePublishableKey: supabasePublishableKey,
       syncScriptUrl: syncScriptUrl,
       syncMode: mode || "quick",
       watchIntervalMs: getWatchIntervalMs()
@@ -59,7 +66,16 @@
     return { quickBookmarklet: quickBookmarklet, watchBookmarklet: watchBookmarklet, fullBookmarklet: fullBookmarklet };
   }
 
-  if (!googleScriptUrl) {
+  if (databaseProvider === "supabase" && (!supabaseUrl || !supabasePublishableKey)) {
+    showStatus("Konfigurasi Supabase belum terisi di config.js.");
+    if (bookmarkletLink) bookmarkletLink.removeAttribute("href");
+    if (watchBookmarkletLink) watchBookmarkletLink.removeAttribute("href");
+    if (fullBookmarkletLink) fullBookmarkletLink.removeAttribute("href");
+    if (copyButton) copyButton.disabled = true;
+    return;
+  }
+
+  if (databaseProvider !== "supabase" && !googleScriptUrl) {
     showStatus("URL Google Apps Script belum terisi di config.js.");
     if (bookmarkletLink) bookmarkletLink.removeAttribute("href");
     if (watchBookmarkletLink) watchBookmarkletLink.removeAttribute("href");

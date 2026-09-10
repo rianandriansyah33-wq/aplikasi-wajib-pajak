@@ -2,7 +2,7 @@
 
 Buka `index.html` di browser untuk memakai aplikasi.
 
-Data dapat disimpan lokal di browser atau disinkronkan ke Google Sheet jika `config.js` sudah diisi dengan URL Google Apps Script.
+Data utama aplikasi disimpan di Supabase. Data lokal browser hanya dipakai sebagai cache sementara ketika koneksi terputus.
 
 ## Buka dari HP lewat internet
 
@@ -14,25 +14,19 @@ Cara paling sederhana:
 
 Catatan penting: jika `config.js` belum diisi, data aplikasi tetap tersimpan lokal di browser masing-masing perangkat.
 
-## Sinkron data laptop dan HP
+## Setup Supabase
 
-Aplikasi ini sudah disiapkan untuk memakai Google Sheet sebagai database online.
+Aplikasi ini memakai Supabase sebagai database online agar input, penghapusan, dan pembaruan status dapat tersinkron antar perangkat.
 
-Langkah setup:
+Sebelum membuka aplikasi pertama kali:
 
-1. Buat Google Sheet baru.
-2. Di Google Sheet, buka Extensions > Apps Script.
-3. Hapus kode bawaan, lalu tempel isi file `google-apps-script.js`.
-4. Klik Save.
-5. Klik Deploy > New deployment.
-6. Pilih type `Web app`.
-7. Pilih `Execute as: Me`.
-8. Pilih `Who has access: Anyone`.
-9. Klik Deploy, lalu salin Web app URL.
-10. Tempel URL tersebut ke `GOOGLE_SCRIPT_URL` di file `config.js`.
-11. Upload ulang folder aplikasi ke Netlify.
+1. Buka Supabase > `SQL Editor` > `New query`.
+2. Tempel seluruh isi `supabase-schema.sql`, lalu klik `Run`.
+3. Buka `Authentication` > `URL Configuration`, lalu masukkan alamat aplikasi GitHub Pages sebagai `Redirect URL`.
+4. Upload ulang file aplikasi ke GitHub Pages.
+5. Saat aplikasi dibuka, masukkan email pemilik dan tekan `Kirim Tautan Masuk`.
 
-Setelah `config.js` terisi, data dari laptop dan HP akan memakai Google Sheet yang sama.
+Setelah tautan masuk dibuka dari email, data laptop dan HP memakai database Supabase yang sama.
 
 Aplikasi akan mengecek Google Sheet otomatis setiap sekitar 10 detik, dan juga langsung mengecek ulang saat tab/browser dibuka kembali. Jadi data dari HP atau laptop lain bisa muncul tanpa refresh manual.
 
@@ -57,7 +51,7 @@ Ada dua cara untuk memakai data SIAPP sebagai pembanding status nopol.
 3. Pasang tombol `Sinkron SIAPP` sebagai bookmark Chrome.
 4. Saat Buku Produksi SIAPP sedang tampil, klik bookmark `Sinkron SIAPP`.
 5. Bookmark akan mencoba membaca menu `SPOS`, `NPP`, `NTP`, seluruh bulan/tahun yang tersedia, dan halaman yang bisa dijangkau.
-6. Data nopol dan status bayar akan dikirim ke Google Sheet aplikasi.
+6. Data nopol dan status bayar akan dikirim ke tabel Buku Produksi Supabase.
 
 Cara ini tidak menyimpan username atau password SIAPP di aplikasi.
 
@@ -73,6 +67,6 @@ Setelah data SIAPP tersinkron, setiap kartu wajib pajak punya tombol `Cek SIAPP`
 4. Pilih jenis buku, bulan, dan tahun.
 5. Tempel data tabel tadi, lalu klik `Simpan Referensi`.
 
-Aplikasi akan membuat sheet tambahan bernama `BUKU_PRODUKSI`. Setelah Apps Script terbaru dideploy ulang, referensi ini ikut sinkron ke HP/laptop dan dipakai untuk mengecek nopol secara otomatis.
+Aplikasi menyimpan referensi pada tabel `production_records`, lalu memakainya untuk mengecek nopol secara otomatis.
 
 Catatan keamanan: jangan bagikan link aplikasi ke umum jika data berisi nama dan nomor WhatsApp wajib pajak.

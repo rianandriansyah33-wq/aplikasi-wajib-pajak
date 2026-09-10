@@ -467,9 +467,28 @@
       </section>
     </div>
 
+    <div class="detail-overlay auth-overlay" id="authOverlay" hidden>
+      <section class="detail-panel modal-card auth-panel" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+        <div class="detail-top">
+          <div>
+            <p class="eyebrow">Database Aman</p>
+            <h2 id="authTitle">Masuk ke Aplikasi</h2>
+            <p class="detail-subtitle">Masukkan email pemilik untuk menerima tautan masuk.</p>
+          </div>
+        </div>
+        <form id="authForm" class="auth-form">
+          <label class="form-label" for="authEmail">Email</label>
+          <input class="form-control" id="authEmail" type="email" autocomplete="email" required>
+          <button class="btn btn-primary" type="submit">Kirim Tautan Masuk</button>
+          <p class="detail-subtitle" id="authStatus" aria-live="polite"></p>
+        </form>
+      </section>
+    </div>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="config.js"></script>
+    <script src="config.js?v=20260910-1110"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="app.js?v=20260910-0830"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app.js?v=20260910-1110"></script>
   </body>
 </html>

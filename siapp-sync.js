@@ -1,6 +1,9 @@
 (function () {
   const config = window.__WAJIB_PAJAK_SYNC_CONFIG || {};
   const googleScriptUrl = config.googleScriptUrl || "";
+  const supabaseUrl = String(config.supabaseUrl || "").replace(/\/$/, "");
+  const supabasePublishableKey = String(config.supabasePublishableKey || "");
+  const databaseProvider = String(config.databaseProvider || "google-script").toLowerCase();
   const syncMode = config.syncMode === "full" ? "full" : config.syncMode === "watch" ? "watch" : "quick";
   const watchIntervalMs = Number(config.watchIntervalMs) || 60000;
   const jasaRaharjaRoda4 = 143000;
@@ -892,6 +895,47 @@
 
   async function sendRecords(scope, records) {
     if (!records.length) return;
+    if (databaseProvider === "supabase") {
+      const batches = [];
+      for (let index = 0; index < records.length; index += 100) batches.push(records.slice(index, index + 100));
+      for (let index = 0; index < batches.length; index += 1) {
+        const rows = batches[index].map(function (record) {
+          return {
+            id: record.id,
+            letter_type: record.letterType,
+            month: record.month,
+            year: record.year,
+            plate_number: record.plateNumber,
+            plate_key: record.plateKey,
+            owner_name: record.ownerName,
+            entry_number: record.entryNumber,
+            status: record.status,
+            is_paid: record.isPaid,
+            paid_date: record.paidDate ? toIsoDate(record.paidDate) : null,
+            recorded_date: record.recordedDate || null,
+            tax_valid_date: record.taxValidDate || null,
+            tax_base_amount: record.taxBaseAmount || 0,
+            jasa_raharja: record.jasaRaharja || 0,
+            late_penalty: record.latePenalty || 0,
+            calculated_tax_potential: record.calculatedTaxPotential || 0,
+            source_text: record.sourceText || "",
+            updated_at: record.updatedAt
+          };
+        });
+        const response = await fetch(supabaseUrl + "/rest/v1/production_records?on_conflict=id", {
+          method: "POST",
+          headers: {
+            apikey: supabasePublishableKey,
+            Authorization: "Bearer " + supabasePublishableKey,
+            "Content-Type": "application/json",
+            Prefer: "resolution=merge-duplicates,return=minimal"
+          },
+          body: JSON.stringify(rows)
+        });
+        if (!response.ok) throw new Error("Supabase tidak menerima data SIAPP.");
+      }
+      return;
+    }
     await fetch(googleScriptUrl, {
       method: "POST",
       mode: "no-cors",
@@ -930,7 +974,13 @@
     const isWatchSync = syncMode === "watch";
     setStatus(isFullSync ? "Menyiapkan Sinkron SIAPP lengkap..." : isWatchSync ? "Memantau SIAPP..." : "Menyiapkan Sinkron SIAPP cepat...");
 
-    if (!googleScriptUrl) {
+    if (databaseProvider === "supabase" && (!supabaseUrl || !supabasePublishableKey)) {
+      setStatus("Konfigurasi Supabase belum tersedia.", "rgb(180,35,24)");
+      if (!settings.silent) alert("Konfigurasi Supabase belum tersedia.");
+      return;
+    }
+
+    if (databaseProvider !== "supabase" && !googleScriptUrl) {
       setStatus("URL Google Apps Script belum tersedia.", "rgb(180,35,24)");
       if (!settings.silent) alert("URL Google Apps Script belum tersedia.");
       return;

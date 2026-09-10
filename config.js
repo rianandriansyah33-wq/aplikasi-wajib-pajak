@@ -1,3 +1,7 @@
 window.APP_CONFIG = {
-  GOOGLE_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwbNTQdqOi-nwvDMgOdl9PRx10zjNOJUbknwRTnhxNYx4BiARLTCXuh1YdMbksYy-5p/exec"
+  DATABASE_PROVIDER: "supabase",
+  SUPABASE_URL: "https://uwhwuiybmbeekgxamdgd.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_OUxX5cxOT2UTS-5Ho_FBIg_MoH28HaH",
+  SUPABASE_ALLOWED_EMAIL: "rianandriansyah33@gmail.com",
+  GOOGLE_SCRIPT_URL: ""
 };

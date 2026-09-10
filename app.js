@@ -85,7 +85,11 @@ const controls = {
   detailContent: document.querySelector("#detailContent"),
   siappOverlay: document.querySelector("#siappOverlay"),
   siappCloseBtn: document.querySelector("#siappCloseBtn"),
-  siappFrame: document.querySelector("#siappFrame")
+  siappFrame: document.querySelector("#siappFrame"),
+  authOverlay: document.querySelector("#authOverlay"),
+  authForm: document.querySelector("#authForm"),
+  authEmail: document.querySelector("#authEmail"),
+  authStatus: document.querySelector("#authStatus")
 };
 
 const summary = {
@@ -136,16 +140,30 @@ let remoteRetryTimer = null;
 let remoteFailureCount = 0;
 let remoteConnectionState = "unknown";
 let activeDetailRecordId = "";
+let supabaseClient = null;
+let supabaseSession = null;
+let hasAttemptedLocalProductionMigration = false;
 
 function getDatabaseConfig() {
   const config = window.APP_CONFIG || {};
   return {
-    googleScriptUrl: String(config.GOOGLE_SCRIPT_URL || "").trim()
+    provider: String(config.DATABASE_PROVIDER || "google-script").trim().toLowerCase(),
+    googleScriptUrl: String(config.GOOGLE_SCRIPT_URL || "").trim(),
+    supabaseUrl: String(config.SUPABASE_URL || "").trim().replace(/\/$/, ""),
+    supabasePublishableKey: String(config.SUPABASE_PUBLISHABLE_KEY || "").trim(),
+    supabaseAllowedEmail: String(config.SUPABASE_ALLOWED_EMAIL || "").trim().toLowerCase()
   };
 }
 
 function hasRemoteDatabase() {
+  if (databaseConfig.provider === "supabase") {
+    return Boolean(databaseConfig.supabaseUrl && databaseConfig.supabasePublishableKey);
+  }
   return Boolean(databaseConfig.googleScriptUrl);
+}
+
+function isSupabaseDatabase() {
+  return databaseConfig.provider === "supabase" && hasRemoteDatabase();
 }
 
 function updateSyncStatus(text, state) {
@@ -345,6 +363,7 @@ function shouldUseJsonpForDatabase(action, payload) {
 
 async function requestDatabase(action, payload) {
   if (!hasRemoteDatabase()) return null;
+  if (isSupabaseDatabase()) return requestSupabaseDatabase(action, payload || {});
 
   if (shouldUseJsonpForDatabase(action, payload)) {
     return requestDatabaseJsonp(action, payload);
@@ -371,6 +390,192 @@ async function requestDatabase(action, payload) {
   }
 
   return Object.assign({ ok: true }, payload || {});
+}
+
+function getSupabaseClient() {
+  if (!isSupabaseDatabase() || !window.supabase) return null;
+  if (!supabaseClient) {
+    supabaseClient = window.supabase.createClient(
+      databaseConfig.supabaseUrl,
+      databaseConfig.supabasePublishableKey,
+      { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }
+    );
+  }
+  return supabaseClient;
+}
+
+function toSupabaseTaxpayerRow(record) {
+  const item = normalizeRecord(record);
+  return {
+    id: item.id,
+    plate_key: getPlateKey(item.plateNumber),
+    letter_type: item.letterType,
+    tax_valid_date: item.taxValidDate || null,
+    plate_number: item.plateNumber,
+    owner_name: item.ownerName,
+    tax_potential: Number(item.taxPotential || 0),
+    phone: item.phone,
+    status: item.status,
+    field_visit_date: item.fieldVisitDate || null,
+    field_visit_note: item.fieldVisitNote,
+    updated_at: item.updatedAt
+  };
+}
+
+function fromSupabaseTaxpayerRow(row) {
+  return normalizeRecord({
+    id: row.id,
+    letterType: row.letter_type,
+    taxValidDate: row.tax_valid_date,
+    plateNumber: row.plate_number,
+    ownerName: row.owner_name,
+    taxPotential: row.tax_potential,
+    phone: row.phone,
+    status: row.status,
+    fieldVisitDate: row.field_visit_date,
+    fieldVisitNote: row.field_visit_note,
+    updatedAt: row.updated_at
+  });
+}
+
+function toSupabaseProductionRow(record) {
+  const item = normalizeProductionRecord(record);
+  return {
+    id: item.id,
+    letter_type: item.letterType,
+    month: item.month,
+    year: item.year,
+    plate_number: item.plateNumber,
+    plate_key: item.plateKey,
+    owner_name: item.ownerName,
+    entry_number: item.entryNumber,
+    status: item.status,
+    is_paid: item.isPaid,
+    paid_date: item.paidDate || null,
+    recorded_date: item.recordedDate || null,
+    tax_valid_date: item.taxValidDate || null,
+    tax_base_amount: Number(item.taxBaseAmount || 0),
+    jasa_raharja: Number(item.jasaRaharja || 0),
+    late_penalty: Number(item.latePenalty || 0),
+    calculated_tax_potential: Number(item.calculatedTaxPotential || 0),
+    source_text: item.sourceText,
+    updated_at: item.updatedAt
+  };
+}
+
+function fromSupabaseProductionRow(row) {
+  return normalizeProductionRecord({
+    id: row.id,
+    letterType: row.letter_type,
+    month: row.month,
+    year: row.year,
+    plateNumber: row.plate_number,
+    plateKey: row.plate_key,
+    ownerName: row.owner_name,
+    entryNumber: row.entry_number,
+    status: row.status,
+    isPaid: row.is_paid,
+    paidDate: row.paid_date,
+    recordedDate: row.recorded_date,
+    taxValidDate: row.tax_valid_date,
+    taxBaseAmount: row.tax_base_amount,
+    jasaRaharja: row.jasa_raharja,
+    latePenalty: row.late_penalty,
+    calculatedTaxPotential: row.calculated_tax_potential,
+    sourceText: row.source_text,
+    updatedAt: row.updated_at
+  });
+}
+
+async function getSupabaseAccessToken() {
+  const client = getSupabaseClient();
+  if (!client) throw new Error("Supabase belum siap.");
+  const response = await client.auth.getSession();
+  const session = response.data && response.data.session;
+  if (!session || !session.access_token) throw new Error("Masuk ke database diperlukan.");
+  if (databaseConfig.supabaseAllowedEmail && String(session.user && session.user.email || "").toLowerCase() !== databaseConfig.supabaseAllowedEmail) {
+    throw new Error("Email ini tidak memiliki akses database.");
+  }
+  supabaseSession = session;
+  return session.access_token;
+}
+
+async function requestSupabaseRest(path, options) {
+  const token = await getSupabaseAccessToken();
+  const requestOptions = options || {};
+  const response = await fetch(databaseConfig.supabaseUrl + "/rest/v1/" + path, Object.assign({}, requestOptions, {
+    headers: Object.assign({
+      apikey: databaseConfig.supabasePublishableKey,
+      Authorization: "Bearer " + token
+    }, requestOptions.headers || {})
+  }));
+  if (!response.ok) throw new Error("Supabase: " + response.status);
+  if (response.status === 204) return [];
+  const text = await response.text();
+  return text ? JSON.parse(text) : [];
+}
+
+async function listSupabaseRows(table, mapper) {
+  const allRows = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const rows = await requestSupabaseRest(table + "?select=*&order=updated_at.desc", {
+      headers: { Range: from + "-" + (from + pageSize - 1) }
+    });
+    allRows.push.apply(allRows, rows);
+    if (rows.length < pageSize) break;
+  }
+  return allRows.map(mapper);
+}
+
+async function requestSupabaseDatabase(action, payload) {
+  if (action === "list") {
+    return { ok: true, records: await listSupabaseRows("taxpayers", fromSupabaseTaxpayerRow) };
+  }
+  if (action === "listProduction") {
+    return { ok: true, productionRecords: await listSupabaseRows("production_records", fromSupabaseProductionRow) };
+  }
+  if (action === "productionSummary") {
+    const rows = await requestSupabaseRest("production_summary?select=*");
+    const source = rows[0] || {};
+    return {
+      ok: true,
+      productionSummary: {
+        count: Number(source.count || 0),
+        paidCount: Number(source.paid_count || 0),
+        unpaidCount: Number(source.unpaid_count || 0),
+        latestUpdate: source.latest_update || ""
+      }
+    };
+  }
+  if (action === "upsert") {
+    const rows = (payload.records || []).map(toSupabaseTaxpayerRow);
+    if (!rows.length) return { ok: true, records: [] };
+    const saved = await requestSupabaseRest("taxpayers?on_conflict=id", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify(rows)
+    });
+    return { ok: true, records: saved.map(fromSupabaseTaxpayerRow) };
+  }
+  if (action === "upsertProduction") {
+    const rows = (payload.productionRecords || []).map(toSupabaseProductionRow);
+    if (!rows.length) return { ok: true, productionRecords: [] };
+    const saved = await requestSupabaseRest("production_records?on_conflict=id", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify(rows)
+    });
+    return { ok: true, productionRecords: saved.map(fromSupabaseProductionRow) };
+  }
+  if (action === "deleteMany") {
+    const ids = (payload.ids || []).filter(Boolean);
+    if (!ids.length) return { ok: true };
+    const query = "taxpayers?id=in.(" + ids.map(encodeURIComponent).join(",") + ")";
+    await requestSupabaseRest(query, { method: "DELETE", headers: { Prefer: "return=minimal" } });
+    return { ok: true };
+  }
+  throw new Error("Aksi Supabase tidak dikenal.");
 }
 
 function requestDatabaseJsonp(action, payload) {
@@ -446,6 +651,19 @@ async function fetchRemoteProductionRecords() {
 async function fetchRemoteProductionSummary() {
   const result = await requestDatabase("productionSummary");
   return normalizeProductionSummary(result.productionSummary || result.summary || result);
+}
+
+async function migrateLocalProductionRecordsToRemote() {
+  if (!isSupabaseDatabase() || hasAttemptedLocalProductionMigration || !productionRecords.length) return;
+  hasAttemptedLocalProductionMigration = true;
+  const remoteProduction = await fetchRemoteProductionRecords();
+  if (remoteProduction.length) return;
+
+  const batches = chunkItems(productionRecords, 100);
+  for (let index = 0; index < batches.length; index += 1) {
+    await requestDatabase("upsertProduction", { productionRecords: batches[index] });
+  }
+  showToast("Data Buku Produksi lokal dipindahkan ke Supabase.", "connection-success");
 }
 
 async function replaceRemoteProductionRecords(scope, items) {
@@ -793,6 +1011,11 @@ async function initializeRemoteDatabase() {
       render();
       markRemoteOnline("Online auto-sync");
       syncPendingRemoteMutations();
+      migrateLocalProductionRecordsToRemote().then(function () {
+        refreshRemoteProductionSummary({ force: true, silent: true });
+      }).catch(function (error) {
+        console.warn(error);
+      });
       refreshRemoteProductionSummary({ force: true, silent: true });
       return;
     }
@@ -808,6 +1031,11 @@ async function initializeRemoteDatabase() {
     render();
     markRemoteOnline("Online auto-sync");
     syncPendingRemoteMutations();
+    migrateLocalProductionRecordsToRemote().then(function () {
+      refreshRemoteProductionSummary({ force: true, silent: true });
+    }).catch(function (error) {
+      console.warn(error);
+    });
     refreshRemoteProductionSummary({ force: true, silent: true });
   } catch (error) {
     console.error(error);
@@ -816,6 +1044,53 @@ async function initializeRemoteDatabase() {
     showToast("Database online gagal tersambung, memakai data lokal.");
     scheduleRemoteRetry();
   }
+}
+
+function showSupabaseLogin(message) {
+  if (controls.authEmail && databaseConfig.supabaseAllowedEmail) {
+    controls.authEmail.value = databaseConfig.supabaseAllowedEmail;
+  }
+  if (controls.authStatus) controls.authStatus.textContent = message || "Masuk diperlukan untuk membuka database.";
+  if (controls.authOverlay) controls.authOverlay.hidden = false;
+  updateSyncStatus("Menunggu masuk", "");
+}
+
+function hideSupabaseLogin() {
+  if (controls.authOverlay) controls.authOverlay.hidden = true;
+}
+
+async function initializeApplicationDatabase() {
+  if (!isSupabaseDatabase()) {
+    initializeRemoteDatabase();
+    return;
+  }
+
+  const client = getSupabaseClient();
+  if (!client) {
+    showSupabaseLogin("Library Supabase belum termuat. Coba buka ulang aplikasi.");
+    return;
+  }
+
+  const sessionResult = await client.auth.getSession();
+  const session = sessionResult.data && sessionResult.data.session;
+  if (!session || (databaseConfig.supabaseAllowedEmail && String(session.user && session.user.email || "").toLowerCase() !== databaseConfig.supabaseAllowedEmail)) {
+    showSupabaseLogin(session ? "Email ini tidak memiliki akses ke database." : "Masuk dengan email pemilik aplikasi.");
+  } else {
+    supabaseSession = session;
+    hideSupabaseLogin();
+    initializeRemoteDatabase();
+  }
+
+  client.auth.onAuthStateChange(function (_event, nextSession) {
+    if (!nextSession) return;
+    if (databaseConfig.supabaseAllowedEmail && String(nextSession.user && nextSession.user.email || "").toLowerCase() !== databaseConfig.supabaseAllowedEmail) {
+      showSupabaseLogin("Email ini tidak memiliki akses ke database.");
+      return;
+    }
+    supabaseSession = nextSession;
+    hideSupabaseLogin();
+    initializeRemoteDatabase();
+  });
 }
 
 function todayIso() {
@@ -2870,6 +3145,30 @@ if (controls.siappOverlay) {
   });
 }
 
+if (controls.authForm) {
+  controls.authForm.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    const email = String(controls.authEmail && controls.authEmail.value || "").trim().toLowerCase();
+    if (!email) return;
+    if (databaseConfig.supabaseAllowedEmail && email !== databaseConfig.supabaseAllowedEmail) {
+      if (controls.authStatus) controls.authStatus.textContent = "Gunakan email pemilik aplikasi.";
+      return;
+    }
+    const client = getSupabaseClient();
+    if (!client) return;
+    if (controls.authStatus) controls.authStatus.textContent = "Mengirim tautan masuk...";
+    const response = await client.auth.signInWithOtp({
+      email: email,
+      options: { emailRedirectTo: window.location.href.split("#")[0] }
+    });
+    if (response.error) {
+      if (controls.authStatus) controls.authStatus.textContent = "Tautan masuk belum dapat dikirim. Coba lagi.";
+      return;
+    }
+    if (controls.authStatus) controls.authStatus.textContent = "Tautan masuk telah dikirim. Buka email ini lalu kembali ke aplikasi.";
+  });
+}
+
 document.addEventListener("keydown", function (event) {
   if (event.key === "Escape") closeMobileMenu();
   if (event.key === "Escape" && controls.siappOverlay && !controls.siappOverlay.hidden) {
@@ -2960,4 +3259,4 @@ updateProductionSummary();
 updateProductionCheckPreview();
 updateSiappAutofillPanel();
 startMobileHeaderAutoHide();
-initializeRemoteDatabase();
+initializeApplicationDatabase();
