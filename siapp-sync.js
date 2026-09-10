@@ -244,7 +244,8 @@
     const paymentText = dateColumn + " " + statusColumn;
     const hasUnpaidMarker = /\b(BELUM|TIDAK)\s+(?:TERDETEKSI\s+)?(?:LUNAS|BAYAR)\b/.test(paymentText);
     const hasPaidWord = /\b(LUNAS|SUDAH\s+BAYAR|TERBAYAR|PAID)\b/.test(paymentText);
-    const isPaid = !hasUnpaidMarker && (hasPaidWord || dateMatches.length >= 3);
+    // A payment date alone is not proof of payment. SIAPP must explicitly mark it paid.
+    const isPaid = !hasUnpaidMarker && hasPaidWord;
 
     return {
       isPaid: isPaid,

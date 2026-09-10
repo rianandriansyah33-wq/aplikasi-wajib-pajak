@@ -1465,8 +1465,8 @@ function detectProductionPayment(rawText) {
   const dates = text.match(/\d{2}\/\d{2}\/\d{4}/g) || [];
   const hasUnpaidMarker = /\b(BELUM|TIDAK)\s+(?:TERDETEKSI\s+)?(?:LUNAS|BAYAR)\b/.test(text);
   const hasPaidWord = /\b(LUNAS|SUDAH\s+BAYAR|TERBAYAR|PAID)\b/.test(text);
-  const hasThreeDates = dates.length >= 3;
-  const isPaid = !hasUnpaidMarker && (hasPaidWord || hasThreeDates);
+  // Do not infer payment from the number of dates in a SIAPP row.
+  const isPaid = !hasUnpaidMarker && hasPaidWord;
   return {
     isPaid: isPaid,
     status: isPaid ? "Lunas" : "Belum terdeteksi lunas",
