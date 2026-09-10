@@ -29,9 +29,12 @@ Data laptop dan HP akan memakai database Supabase yang sama. Aplikasi tidak lagi
 
 ## Migrasi penuh dari Google Sheet
 
-Sebelum menghapus Google Sheet, buka aplikasi lama pada browser yang biasa dipakai lalu tekan tombol `JSON`. Berkas cadangan baru berisi data wajib pajak dan Buku Produksi SIAPP.
+Sebelum menghapus Google Sheet, ekspor kedua tab berikut satu per satu dari Google Sheet: pilih tab, lalu `File` > `Download` > `Comma-separated values (.csv, current sheet)`.
 
-Setelah Supabase siap dan aplikasi versi terbaru sudah diunggah ke GitHub Pages, buka aplikasi lalu gunakan tombol `Import` untuk memilih berkas JSON tersebut. Data akan dikirim ke Supabase. Periksa jumlah data pada dashboard dan lakukan satu kali Sinkron Lengkap SIAPP sebelum menghapus Google Sheet.
+1. Tab `BUKU_PRODUKSI` untuk seluruh riwayat SIAPP.
+2. Tab `DATA_WAJIB_PAJAK` untuk kartu follow-up dan hasil dinas luar.
+
+Setelah Supabase siap dan aplikasi versi terbaru sudah diunggah ke GitHub Pages, buka aplikasi lalu gunakan tombol `Import Data` untuk memilih kedua CSV tersebut satu per satu. Data akan digabung dan dikirim bertahap ke Supabase tanpa menghapus data yang sudah ada. Periksa jumlah data pada dashboard dan lakukan satu kali Sinkron Lengkap SIAPP sebelum menghapus Google Sheet.
 
 Aplikasi juga akan mencoba memindahkan data lokal yang sudah tersimpan di browser ke Supabase saat pertama kali terhubung. Data yang lebih baru di Supabase tidak akan ditimpa oleh data cache yang lebih lama.
 

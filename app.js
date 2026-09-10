@@ -2776,6 +2776,90 @@ function exportCsvData() {
   downloadFile("data-wajib-pajak-" + todayIso() + ".csv", "text/csv;charset=utf-8", toCsv(getFilteredRecords()));
 }
 
+function parseCsvRows(value) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  const source = String(value || "").replace(/^\uFEFF/, "");
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === '"') {
+      if (quoted && source[index + 1] === '"') {
+        cell += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (character === "," && !quoted) {
+      row.push(cell);
+      cell = "";
+    } else if ((character === "\n" || character === "\r") && !quoted) {
+      if (character === "\r" && source[index + 1] === "\n") index += 1;
+      row.push(cell);
+      if (row.some(function (item) { return String(item).trim(); })) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += character;
+    }
+  }
+
+  row.push(cell);
+  if (row.some(function (item) { return String(item).trim(); })) rows.push(row);
+  if (rows.length < 2) return [];
+
+  const headers = rows.shift().map(function (header) {
+    return String(header || "").replace(/^\uFEFF/, "").trim();
+  });
+  return rows.map(function (cells) {
+    return headers.reduce(function (item, header, index) {
+      item[header] = String(cells[index] == null ? "" : cells[index]).trim();
+      return item;
+    }, {});
+  }).filter(function (item) {
+    return Object.values(item).some(Boolean);
+  });
+}
+
+function mergeImportedItems(existingItems, incomingItems, normalizer) {
+  const merged = new Map();
+  (existingItems || []).forEach(function (item) {
+    const normalized = normalizer(item);
+    if (normalized.id) merged.set(normalized.id, normalized);
+  });
+  (incomingItems || []).forEach(function (item) {
+    const normalized = normalizer(item);
+    if (!normalized.id) return;
+    const existing = merged.get(normalized.id);
+    if (!existing || String(normalized.updatedAt || "") >= String(existing.updatedAt || "")) {
+      merged.set(normalized.id, normalized);
+    }
+  });
+  return Array.from(merged.values());
+}
+
+async function readImportedData(file) {
+  const source = await file.text();
+  if (/\.csv$/i.test(file.name) || /^\s*(?:\uFEFF)?(?:id|letterType|plateNumber),/i.test(source)) {
+    const csvRows = parseCsvRows(source);
+    if (!csvRows.length) throw new Error("CSV kosong atau tidak sesuai format.");
+    const isProduction = Object.prototype.hasOwnProperty.call(csvRows[0], "letterType") &&
+      Object.prototype.hasOwnProperty.call(csvRows[0], "month") &&
+      Object.prototype.hasOwnProperty.call(csvRows[0], "sourceText");
+    return isProduction
+      ? { taxpayers: [], productionRecords: csvRows, sourceLabel: "Buku Produksi" }
+      : { taxpayers: csvRows, productionRecords: [], sourceLabel: "Data Wajib Pajak" };
+  }
+
+  const imported = JSON.parse(source);
+  const taxpayers = Array.isArray(imported) ? imported : imported && imported.taxpayers;
+  const productionRecords = Array.isArray(imported && imported.productionRecords) ? imported.productionRecords : [];
+  if (!Array.isArray(taxpayers)) throw new Error("Format JSON tidak valid.");
+  return { taxpayers: taxpayers, productionRecords: productionRecords, sourceLabel: "Cadangan JSON" };
+}
+
 function toggleMobileMenu() {
   if (!controls.mobileMenuPanel || !controls.mobileMenuBtn) return;
   const willOpen = controls.mobileMenuPanel.hidden;
@@ -3151,27 +3235,26 @@ controls.importFile.addEventListener("change", async function (event) {
   const file = event.target.files[0];
   if (!file) return;
   try {
-    const imported = JSON.parse(await file.text());
-    const importedTaxpayers = Array.isArray(imported) ? imported : imported && imported.taxpayers;
-    const importedProduction = Array.isArray(imported && imported.productionRecords) ? imported.productionRecords : [];
-    if (!Array.isArray(importedTaxpayers)) throw new Error("Format tidak valid");
+    const imported = await readImportedData(file);
+    const importedTaxpayers = imported.taxpayers;
+    const importedProduction = imported.productionRecords;
     const previousRecords = records.slice();
-    const previousIds = records.map(function (record) {
-      return record.id;
-    });
-    records = importedTaxpayers.map(normalizeRecord);
-    if (importedProduction.length) setProductionRecords(importedProduction);
+    const previousProductionRecords = productionRecords.slice();
+    records = mergeImportedItems(records, importedTaxpayers, normalizeRecord);
+    if (importedProduction.length) {
+      setProductionRecords(mergeImportedItems(productionRecords, importedProduction, normalizeProductionRecord));
+    }
     saveRecords();
     resetForm();
     render();
 
     if (hasRemoteDatabase()) {
       try {
-        await deleteRemoteRecords(previousIds);
-        const savedRecords = await saveRemoteRecords(records);
+        const savedRecords = importedTaxpayers.length ? await saveRemoteRecords(importedTaxpayers) : [];
         if (importedProduction.length) {
-          const productionBatches = chunkItems(productionRecords, 100);
+          const productionBatches = chunkItems(importedProduction, 100);
           for (let index = 0; index < productionBatches.length; index += 1) {
+            showToast("Memindahkan Buku Produksi " + Math.min((index + 1) * 100, importedProduction.length) + "/" + importedProduction.length + " data...");
             await requestDatabase("upsertProduction", { productionRecords: productionBatches[index] });
           }
         }
@@ -3181,11 +3264,12 @@ controls.importFile.addEventListener("change", async function (event) {
           render();
         }
         markRemoteOnline("Online tersambung");
-        showToast("Data lengkap berhasil diimport dan tersinkron.");
+        showToast(imported.sourceLabel + " berhasil diimport dan tersinkron.");
         return;
       } catch (error) {
         console.error(error);
         records = previousRecords;
+        setProductionRecords(previousProductionRecords);
         saveRecords();
         render();
         markRemoteFailure("Gagal sinkron");
@@ -3194,9 +3278,9 @@ controls.importFile.addEventListener("change", async function (event) {
       }
     }
 
-    showToast("Data berhasil diimport.");
+    showToast(imported.sourceLabel + " berhasil diimport.");
   } catch {
-    showToast("File JSON tidak dapat dibaca.");
+    showToast("File JSON atau CSV tidak dapat dibaca.");
   } finally {
     controls.importFile.value = "";
   }

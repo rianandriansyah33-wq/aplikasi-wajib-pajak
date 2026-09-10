@@ -435,6 +435,27 @@
     });
   }
 
+  function getPaginationPageNumbers(root) {
+    const pageNumbers = {};
+    Array.from(root.querySelectorAll("a, button, input[type='button'], input[type='submit']")).forEach(function (control) {
+      if (control.closest("table")) return;
+      const text = normalizeText(control.textContent || control.value || "");
+      if (!/^\d+$/.test(text)) return;
+      const page = Number(text);
+      if (page > 0) pageNumbers[page] = true;
+    });
+    return Object.keys(pageNumbers).map(Number).sort(function (first, second) {
+      return first - second;
+    });
+  }
+
+  function getFramePaginationControl(frameDocument, pageNumber) {
+    return Array.from(frameDocument.querySelectorAll("a, button, input[type='button'], input[type='submit']")).find(function (control) {
+      if (control.closest("table")) return false;
+      return Number(normalizeText(control.textContent || control.value || "")) === Number(pageNumber);
+    }) || null;
+  }
+
   async function fetchDocument(url, options) {
     const response = await fetch(url, Object.assign({
       credentials: "include"
@@ -515,6 +536,13 @@
 
     const pages = [parseRows(firstDocument)];
     const pageLinks = getPaginationLinks(firstDocument, firstDocument.__siappUrl || target.url);
+    const pageNumbers = getPaginationPageNumbers(firstDocument);
+
+    // Seluruh halaman setelah halaman pertama dibaca melalui iframe. Dengan
+    // begitu pagination URL maupun onclick JavaScript mengikuti perilaku asli SIAPP.
+    if (pageNumbers.some(function (page) { return page > 1; })) {
+      return null;
+    }
 
     for (let pageIndex = 0; pageIndex < pageLinks.length; pageIndex += 1) {
       const pageLink = pageLinks[pageIndex];
@@ -690,12 +718,32 @@
     const frameDocument = frame.contentDocument;
     const pages = [baseParsed];
     const pageLinks = getPaginationLinks(frameDocument, frameDocument.__siappUrl || frame.contentWindow.location.href);
+    const visitedPages = { 1: true };
 
     for (let pageIndex = 0; pageIndex < pageLinks.length; pageIndex += 1) {
       const pageLink = pageLinks[pageIndex];
       if (pageLink.url === (frameDocument.__siappUrl || frame.contentWindow.location.href)) continue;
       const pageDocument = await loadFrameDocument(frame, pageLink.url);
       pages.push(parseRows(pageDocument));
+      visitedPages[pageLink.page] = true;
+    }
+
+    const pageNumbers = getPaginationPageNumbers(frame.contentDocument);
+    for (let pageIndex = 0; pageIndex < pageNumbers.length; pageIndex += 1) {
+      const pageNumber = pageNumbers[pageIndex];
+      if (visitedPages[pageNumber]) continue;
+      const control = getFramePaginationControl(frame.contentDocument, pageNumber);
+      if (!control) continue;
+
+      setStatus("Membaca halaman " + pageNumber + "...");
+      const loaded = waitForFrameLoad(frame, 5000);
+      control.click();
+      await Promise.race([loaded, delay(1400)]);
+      await delay(350);
+      const pageDocument = frame.contentDocument;
+      const parsed = parseRows(pageDocument);
+      if (parsed.records.length) pages.push(parsed);
+      visitedPages[pageNumber] = true;
     }
 
     return mergeParsedPages(pages);
