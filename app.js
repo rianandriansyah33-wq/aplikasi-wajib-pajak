@@ -1989,7 +1989,9 @@ function matchesDlFilter(record, filterValue) {
   if (!filterValue || filterValue === "all") return true;
   if (filterValue === "noDl") return !record.fieldVisitDate;
 
-  const monthContext = getMonthContext();
+  // The list filter must always mean the actual current month, independent
+  // from the month selected for reviewing dashboard history.
+  const monthContext = getMonthContext(todayIso());
   const isThisMonth = isDateInMonth(record.fieldVisitDate, monthContext);
   if (!isThisMonth) return false;
 
