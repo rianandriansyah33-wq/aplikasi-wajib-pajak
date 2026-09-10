@@ -1647,14 +1647,16 @@ function isRecordPaid(record) {
 
 function describeProductionMatch(recordOrPlate) {
   const match = getProductionMatch(recordOrPlate);
-  if (!match) return "Belum tersinkron SIAPP";
+  if (!match) return "Belum lunas SIAPP";
   if (match.isPaid) return "Lunas SIAPP" + (match.paidDate ? " - " + match.paidDate : "");
   return "Belum lunas SIAPP";
 }
 
 function getSiappPaymentFilterState(record) {
   const match = getProductionMatch(record);
-  if (!match) return "siappMissing";
+  // Payment is only marked paid when SIAPP explicitly provides a paid record.
+  // Every other taxpayer remains in the unpaid follow-up queue.
+  if (!match) return "siappUnpaid";
   return match.isPaid ? "siappPaid" : "siappUnpaid";
 }
 
@@ -1848,6 +1850,18 @@ function applyProductionLetterUpdates(sourceRecords) {
     }
 
     if (!isChanged) return;
+    existingRecord.updatedAt = new Date().toISOString();
+    changedRecords.push(normalizeRecord(existingRecord));
+  });
+
+  // Keep every saved taxpayer in one of two payment states. A missing source
+  // record is not evidence of payment, so it remains "Belum bayar" until a
+  // future SIAPP sync explicitly records it as paid.
+  records.forEach(function (existingRecord) {
+    const plateKey = getPlateKey(existingRecord.plateNumber);
+    if (!plateKey || processedPlateKeys[plateKey]) return;
+    if (existingRecord.status === "Belum bayar") return;
+    existingRecord.status = "Belum bayar";
     existingRecord.updatedAt = new Date().toISOString();
     changedRecords.push(normalizeRecord(existingRecord));
   });
@@ -2291,9 +2305,9 @@ function getSiappStatusInfo(record) {
   const match = getProductionMatch(record);
   if (!match) {
     return {
-      label: "Belum tersinkron",
-      detail: "Belum ada data SIAPP",
-      className: "is-neutral"
+      label: "Belum lunas",
+      detail: "Belum ada pelunasan SIAPP",
+      className: "is-unpaid"
     };
   }
 
@@ -2537,7 +2551,7 @@ function render() {
         if (siappLabel) siappLabel.textContent = "Belum lunas";
       } else {
         siappButton.classList.add("is-unpaid");
-        if (siappLabel) siappLabel.textContent = "Belum tersinkron";
+        if (siappLabel) siappLabel.textContent = "Belum lunas";
       }
       siappButton.disabled = true;
       siappButton.setAttribute("aria-label", "Status pembayaran otomatis dari data SIAPP tersinkron");
