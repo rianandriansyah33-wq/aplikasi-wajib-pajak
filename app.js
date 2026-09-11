@@ -1473,13 +1473,10 @@ function isProductionRecordPaid(record) {
   const sourceText = String(record.sourceText || "").trim();
   if (sourceText) return detectProductionPayment(sourceText).isPaid;
 
-  const fallbackPayment = detectProductionPayment([record.status, record.paidDate].join(" "));
-  if (!fallbackPayment.isPaid && /\b(BELUM|TIDAK)\s+(?:TERDETEKSI\s+)?(?:LUNAS|BAYAR)\b/.test(normalizeUpperText([record.status, record.paidDate].join(" ")))) {
-    return false;
-  }
-  const paidFlag = String(record.isPaid == null ? "" : record.isPaid).trim().toLowerCase();
-  if (record.isPaid === true || ["true", "1", "ya"].includes(paidFlag)) return true;
-  return fallbackPayment.isPaid;
+  // Old rows could contain an incorrect is_paid flag. Without the original
+  // SIAPP row there is no evidence of payment, so keep it unpaid until a
+  // subsequent sync supplies sourceText with an explicit paid marker.
+  return false;
 }
 
 function getProductionOwnerFromContext(context, plateNumber) {
@@ -1583,9 +1580,14 @@ function parseProductionPaste(text, scope) {
 }
 
 function getProductionReferenceDate(value) {
-  if (value && typeof value === "object" && value.updatedAt) {
-    const datePart = String(value.updatedAt).slice(0, 10);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart;
+  if (value && typeof value === "object") {
+    const fieldVisitDate = toIsoDate(value.fieldVisitDate || value.dlDate || "");
+    if (fieldVisitDate) return fieldVisitDate;
+
+    if (value.updatedAt) {
+      const datePart = String(value.updatedAt).slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart;
+    }
   }
   return todayIso();
 }
@@ -1681,7 +1683,10 @@ function getLatestProductionUpdate() {
 function updateProductionSummary() {
   const localSummary = createProductionSummaryFromRecords(productionRecords);
   const remoteSummary = normalizeProductionSummary(productionSummarySnapshot);
-  const useRemoteSummary = remoteSummary.count >= localSummary.count || String(remoteSummary.latestUpdate || "") >= String(localSummary.latestUpdate || "");
+  // Once the complete production list is loaded, its payment values have been
+  // revalidated from SIAPP sourceText and are more reliable than an older
+  // aggregate snapshot in the database.
+  const useRemoteSummary = !productionRecords.length && remoteSummary.count > 0;
   const activeSummary = useRemoteSummary ? remoteSummary : localSummary;
   const paidCount = activeSummary.paidCount;
   const unpaidCount = activeSummary.unpaidCount;
