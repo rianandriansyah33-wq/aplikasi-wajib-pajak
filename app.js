@@ -91,12 +91,12 @@ const controls = {
 const summary = {
   totalRecords: document.querySelector("#totalRecords"),
   unpaidRecords: document.querySelector("#unpaidRecords"),
-  overdueRecords: document.querySelector("#overdueRecords"),
-  todayFollowUps: document.querySelector("#todayFollowUps"),
+  paidRecords: document.querySelector("#paidRecords"),
+  paidRecordRate: document.querySelector("#paidRecordRate"),
+  totalPotential: document.querySelector("#totalPotential"),
   unpaidPotential: document.querySelector("#unpaidPotential"),
-  dlMonthCount: document.querySelector("#dlMonthCount"),
-  paidMonthAmount: document.querySelector("#paidMonthAmount"),
-  dlConversionRate: document.querySelector("#dlConversionRate"),
+  paidPotential: document.querySelector("#paidPotential"),
+  paidPotentialRate: document.querySelector("#paidPotentialRate"),
   siappReferenceCount: document.querySelector("#siappReferenceCount"),
   siappLastSync: document.querySelector("#siappLastSync"),
   dashboardMonthLabel: document.querySelector("#dashboardMonthLabel"),
@@ -2041,7 +2041,6 @@ function isDateWithin(dateValue, today, limit, includePaid) {
 
 function updateSummary() {
   updateDashboardMonthFilter();
-  const today = todayIso();
   const monthContext = getMonthContext();
   const monthDlRecords = records.filter(function (record) {
     return isDateInMonth(record.fieldVisitDate, monthContext);
@@ -2055,6 +2054,16 @@ function updateSummary() {
   const paidMonthAmount = monthPaidDlRecords.reduce(function (total, record) {
     return total + Number(record.taxPotential || 0);
   }, 0);
+  const unpaidPotential = unpaid.reduce(function (total, record) {
+    return total + Number(record.taxPotential || 0);
+  }, 0);
+  const totalPotential = unpaidPotential + paidMonthAmount;
+  const paidRecordRate = monthDlRecords.length
+    ? Math.round((monthPaidDlRecords.length / monthDlRecords.length) * 100)
+    : 0;
+  const paidPotentialRate = totalPotential
+    ? Math.round((paidMonthAmount / totalPotential) * 100)
+    : 0;
   const weeklyStats = [1, 2, 3, 4].map(function (week) {
     const weekRecords = monthDlRecords.filter(function (record) {
       return getMonthWeekNumber(record.fieldVisitDate) === week;
@@ -2073,23 +2082,12 @@ function updateSummary() {
 
   summary.totalRecords.textContent = monthDlRecords.length;
   summary.unpaidRecords.textContent = unpaid.length;
-  summary.overdueRecords.textContent = monthDlRecords.filter(function (record) {
-    return isTaxOverdue(record, today);
-  }).length;
-  summary.todayFollowUps.textContent = monthDlRecords.filter(function (record) {
-    const nextFollowUp = getPrimaryFollowUp(record);
-    return !isRecordPaid(record) && nextFollowUp && isDateWithin(nextFollowUp.date, today, 30, false);
-  }).length;
-  summary.unpaidPotential.textContent = formatCurrency(unpaid.reduce(function (total, record) {
-    return total + Number(record.taxPotential || 0);
-  }, 0));
-
-  if (summary.dlMonthCount) summary.dlMonthCount.textContent = monthDlRecords.length;
-  if (summary.paidMonthAmount) summary.paidMonthAmount.textContent = formatCurrency(paidMonthAmount);
-  if (summary.dlConversionRate) {
-    const rate = monthDlRecords.length ? Math.round((monthPaidDlRecords.length / monthDlRecords.length) * 100) : 0;
-    summary.dlConversionRate.textContent = rate + "%";
-  }
+  summary.paidRecords.textContent = monthPaidDlRecords.length;
+  summary.paidRecordRate.textContent = paidRecordRate + "%";
+  summary.totalPotential.textContent = formatCurrency(totalPotential);
+  summary.unpaidPotential.textContent = formatCurrency(unpaidPotential);
+  summary.paidPotential.textContent = formatCurrency(paidMonthAmount);
+  summary.paidPotentialRate.textContent = paidPotentialRate + "%";
   if (summary.dashboardMonthLabel) summary.dashboardMonthLabel.textContent = monthContext.label;
   weeklyStats.forEach(function (stat, index) {
     if (summary.dlWeekCounts[index]) summary.dlWeekCounts[index].textContent = stat.count + " DL";
