@@ -960,7 +960,7 @@ async function refreshRemoteProductionRecords(options) {
     lastProductionRefreshAt = Date.now();
     if (remoteProductionRecords.length || !productionRecords.length) {
       setProductionRecords(remoteProductionRecords);
-      const changedRecords = applyProductionLetterUpdates(remoteProductionRecords);
+      const changedRecords = applyProductionLetterUpdates();
       changedRecords.forEach(queueRemoteUpsert);
       updateProductionSummary();
       updateProductionCheckPreview();
@@ -1808,25 +1808,26 @@ function mergeDuplicateRecord(existingRecord, incomingRecord) {
   });
 }
 
-function applyProductionLetterUpdates(sourceRecords) {
+function applyProductionLetterUpdates() {
   const changedRecords = [];
-  const processedPlateKeys = {};
-
-  sourceRecords.forEach(function (productionRecord) {
-    if (!productionRecord) return;
-    const existingRecord = findExistingRecordByPlate(productionRecord.plateNumber, "");
-    if (!existingRecord) return;
-
-    const plateKey = getPlateKey(existingRecord.plateNumber);
-    if (!plateKey || processedPlateKeys[plateKey]) return;
-    processedPlateKeys[plateKey] = true;
-
+  records.forEach(function (existingRecord) {
     const selectedProductionRecord = getProductionMatch(existingRecord);
-    if (!selectedProductionRecord) return;
+    let isChanged = false;
+
+    if (!selectedProductionRecord) {
+      if (existingRecord.status !== "Belum bayar") {
+        existingRecord.status = "Belum bayar";
+        isChanged = true;
+      }
+      if (isChanged) {
+        existingRecord.updatedAt = new Date().toISOString();
+        changedRecords.push(normalizeRecord(existingRecord));
+      }
+      return;
+    }
 
     const nextLetterType = selectedProductionRecord.letterType;
     const breakdown = getProductionTaxBreakdown(selectedProductionRecord);
-    let isChanged = false;
 
     if (nextLetterType && nextLetterType !== existingRecord.letterType) {
       existingRecord.letterType = nextLetterType;
@@ -1855,18 +1856,6 @@ function applyProductionLetterUpdates(sourceRecords) {
     }
 
     if (!isChanged) return;
-    existingRecord.updatedAt = new Date().toISOString();
-    changedRecords.push(normalizeRecord(existingRecord));
-  });
-
-  // Keep every saved taxpayer in one of two payment states. A missing source
-  // record is not evidence of payment, so it remains "Belum bayar" until a
-  // future SIAPP sync explicitly records it as paid.
-  records.forEach(function (existingRecord) {
-    const plateKey = getPlateKey(existingRecord.plateNumber);
-    if (!plateKey || processedPlateKeys[plateKey]) return;
-    if (existingRecord.status === "Belum bayar") return;
-    existingRecord.status = "Belum bayar";
     existingRecord.updatedAt = new Date().toISOString();
     changedRecords.push(normalizeRecord(existingRecord));
   });
