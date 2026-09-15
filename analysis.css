@@ -56,12 +56,22 @@
 }
 
 .analysis-toolbar {
+  flex-wrap: wrap;
   gap: .75rem;
   margin-top: 1.2rem;
 }
 
 .analysis-toolbar label {
-  width: min(100%, 16rem);
+  flex: 1 1 11rem;
+  min-width: 0;
+  max-width: 15rem;
+}
+
+.analysis-data-note {
+  margin: .7rem 0 0;
+  color: var(--app-warning);
+  font-size: .76rem;
+  font-weight: 750;
 }
 
 .area-metrics {
@@ -150,18 +160,18 @@
 
 .legend-dot {
   display: inline-block;
+  width: .65rem;
+  height: .65rem;
   border-radius: 999px;
   background: var(--app-danger);
 }
 
-.legend-dot.small {
-  width: .45rem;
-  height: .45rem;
+.legend-dot.unpaid {
+  background: var(--app-danger);
 }
 
-.legend-dot.large {
-  width: .75rem;
-  height: .75rem;
+.legend-dot.paid {
+  background: var(--app-success);
 }
 
 .area-map {
@@ -189,6 +199,78 @@
 .area-map .leaflet-tooltip strong {
   display: block;
   margin-bottom: .2rem;
+}
+
+.map-point-popup {
+  min-width: 12rem;
+}
+
+.map-point-popup p {
+  margin: .25rem 0;
+  font-size: .76rem;
+  line-height: 1.35;
+}
+
+.map-point-popup small {
+  display: block;
+  margin-top: .45rem;
+  color: var(--app-muted);
+  font-size: .66rem;
+}
+
+.vehicle-map-marker {
+  box-sizing: border-box;
+  width: .9rem;
+  height: .9rem;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: var(--app-danger);
+  box-shadow: 0 1px 4px rgba(15, 23, 42, .35);
+}
+
+.vehicle-map-marker.is-paid {
+  background: var(--app-success);
+}
+
+.vehicle-cluster {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  border: 3px solid rgba(255, 255, 255, .9);
+  border-radius: 999px;
+  color: #fff;
+  font-size: .7rem;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  box-shadow: 0 2px 7px rgba(15, 23, 42, .28);
+}
+
+.vehicle-cluster.is-unpaid {
+  background: #c2413a;
+}
+
+.vehicle-cluster.is-paid {
+  background: #178856;
+}
+
+.vehicle-cluster.is-mixed {
+  background: #b36f16;
+}
+
+.vehicle-cluster.size-small {
+  width: 2rem;
+  height: 2rem;
+}
+
+.vehicle-cluster.size-medium {
+  width: 2.55rem;
+  height: 2.55rem;
+}
+
+.vehicle-cluster.size-large {
+  width: 3.1rem;
+  height: 3.1rem;
 }
 
 .area-list {
@@ -317,6 +399,7 @@
 
   .analysis-toolbar label {
     width: 100%;
+    max-width: none;
   }
 
   .area-metrics {

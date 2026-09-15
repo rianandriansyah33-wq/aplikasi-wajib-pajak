@@ -44,21 +44,25 @@ const controls = {
   status: document.querySelector("#analysisStatus"),
   source: document.querySelector("#analysisSource"),
   periodFilter: document.querySelector("#analysisPeriodFilter"),
+  districtFilter: document.querySelector("#analysisDistrictFilter"),
   letterFilter: document.querySelector("#analysisLetterFilter"),
+  paymentFilter: document.querySelector("#analysisPaymentFilter"),
+  vehicleTypeFilter: document.querySelector("#analysisVehicleTypeFilter"),
+  vehicleTypeNote: document.querySelector("#vehicleTypeNote"),
   refreshButton: document.querySelector("#refreshAnalysisBtn"),
-  vehicleCount: document.querySelector("#arrearsVehicleCount"),
-  potential: document.querySelector("#arrearsPotential"),
-  districtCount: document.querySelector("#mappedDistrictCount"),
-  unmappedCount: document.querySelector("#unmappedAddressCount"),
+  vehicleCount: document.querySelector("#selectedVehicleCount"),
+  potential: document.querySelector("#unpaidPotential"),
+  paidCount: document.querySelector("#paidVehicleCount"),
+  unpaidCount: document.querySelector("#unpaidVehicleCount"),
   areaList: document.querySelector("#areaList"),
   areaListCount: document.querySelector("#areaListCount"),
   map: document.querySelector("#areaMap")
 };
 
 let productionRecords = [];
+let latestVehicles = [];
 let leafletMap = null;
 let leafletLayer = null;
-let areaMarkers = new Map();
 
 function getPlateKey(value) {
   return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -194,11 +198,20 @@ function extractAreaFromRecord(record) {
     : "";
 
   const center = AREA_CENTERS[districtKey];
+  const addressColumn = String(text.split("|")[2] || "").trim();
+  const ownerName = String(record.owner_name || "").toUpperCase().trim();
+  const address = addressColumn
+    .replace(ownerName, " ")
+    .split(/\bKEC(?:AMATAN)?\.?\s*/)[0]
+    .replace(/\s+/g, " ")
+    .trim();
   return {
     key: districtKey,
     label: center.label,
     village: rawVillage,
-    center: center
+    center: center,
+    address: address || "Alamat belum terbaca",
+    record: record
   };
 }
 
@@ -218,7 +231,13 @@ function createLatestVehicles(records) {
 
   return Array.from(recordsByPlate.values()).map(function (items) {
     const sorted = items.slice().sort(compareProductionRecords);
-    return { record: sorted[0], area: getBestArea(sorted) };
+    const record = sorted[0];
+    return {
+      record: record,
+      area: getBestArea(sorted),
+      isPaid: isExplicitlyPaid(record),
+      vehicleType: getVehicleType(record)
+    };
   });
 }
 
@@ -227,15 +246,26 @@ function getPotential(record) {
   return calculated || Number(record.tax_base_amount || 0);
 }
 
+function getVehicleType(record) {
+  const text = getAddressText(record);
+  const match = text.match(/\b(?:JENIS|GOLONGAN|KENDARAAN)\s*(?:KENDARAAN\s*)?[:=-]?\s*(R2|R4)\b/);
+  return match ? match[1] : "UNKNOWN";
+}
+
 function getFilteredVehicles() {
   const period = controls.periodFilter.value;
+  const district = controls.districtFilter.value;
   const letterType = controls.letterFilter.value;
+  const payment = controls.paymentFilter.value;
+  const vehicleType = controls.vehicleTypeFilter.value;
 
-  return createLatestVehicles(productionRecords).filter(function (item) {
+  return latestVehicles.filter(function (item) {
     const record = item.record;
-    if (isExplicitlyPaid(record)) return false;
     if (period !== "all" && getProductionDate(record).slice(0, 7) !== period) return false;
+    if (district !== "all" && (!item.area || item.area.key !== district)) return false;
     if (letterType !== "all" && record.letter_type !== letterType) return false;
+    if (payment !== "all" && (item.isPaid ? "paid" : "unpaid") !== payment) return false;
+    if (vehicleType !== "all" && item.vehicleType !== vehicleType) return false;
     return true;
   });
 }
@@ -250,11 +280,17 @@ function aggregateAreas(vehicles) {
       label: area ? area.label : "Alamat belum terbaca",
       center: area ? area.center : null,
       count: 0,
+      paidCount: 0,
+      unpaidCount: 0,
       potential: 0,
       villages: new Set()
     };
     current.count += 1;
-    current.potential += getPotential(item.record);
+    if (item.isPaid) current.paidCount += 1;
+    else {
+      current.unpaidCount += 1;
+      current.potential += getPotential(item.record);
+    }
     if (area && area.village) current.villages.add(area.village);
     areas.set(key, current);
   });
@@ -284,6 +320,41 @@ function populatePeriodFilter() {
   controls.periodFilter.value = periods.includes(selectedValue) ? selectedValue : "all";
 }
 
+function populateDistrictFilter() {
+  const selectedValue = controls.districtFilter.value || "all";
+  const districts = Array.from(new Set(latestVehicles.map(function (item) {
+    return item.area && item.area.center ? item.area.key : "";
+  }).filter(Boolean))).sort(function (first, second) {
+    return AREA_CENTERS[first].label.localeCompare(AREA_CENTERS[second].label);
+  });
+
+  controls.districtFilter.replaceChildren();
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "Semua kecamatan";
+  controls.districtFilter.append(allOption);
+  districts.forEach(function (district) {
+    const option = document.createElement("option");
+    option.value = district;
+    option.textContent = AREA_CENTERS[district].label;
+    controls.districtFilter.append(option);
+  });
+  controls.districtFilter.value = districts.includes(selectedValue) ? selectedValue : "all";
+}
+
+function updateVehicleTypeNotice() {
+  if (!controls.vehicleTypeNote) return;
+  const selectedType = controls.vehicleTypeFilter.value;
+  const selectedCount = latestVehicles.filter(function (item) {
+    return item.vehicleType === selectedType;
+  }).length;
+  const needsNotice = (selectedType === "R2" || selectedType === "R4") && selectedCount === 0;
+  controls.vehicleTypeNote.hidden = !needsNotice;
+  controls.vehicleTypeNote.textContent = needsNotice
+    ? "Data jenis kendaraan " + selectedType + " belum tersinkron dari Buku Produksi SIAPP."
+    : "";
+}
+
 function initializeMap() {
   if (leafletMap || !controls.map || !window.L) return Boolean(leafletMap);
   leafletMap = window.L.map(controls.map, { zoomControl: true, scrollWheelZoom: false }).setView([-7.275, 112.745], 12);
@@ -291,35 +362,101 @@ function initializeMap() {
     maxZoom: 18,
     attribution: "&copy; OpenStreetMap contributors"
   }).addTo(leafletMap);
-  leafletLayer = window.L.layerGroup().addTo(leafletMap);
   return true;
 }
 
-function renderMap(areas) {
+function getPointHash(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function getRepresentativePoint(item) {
+  const center = item.area.center;
+  const identity = item.area.key + "|" + item.area.village + "|" + item.area.address;
+  const hash = getPointHash(identity);
+  const angle = (hash % 360) * (Math.PI / 180);
+  const distance = .001 + (((hash >>> 8) % 80) / 80) * .0055;
+  const longitudeScale = Math.max(.35, Math.cos(center.lat * (Math.PI / 180)));
+  return [
+    center.lat + Math.sin(angle) * distance,
+    center.lng + (Math.cos(angle) * distance / longitudeScale)
+  ];
+}
+
+function createVehicleIcon(isPaid) {
+  return window.L.divIcon({
+    className: "",
+    html: "<span class=\"vehicle-map-marker" + (isPaid ? " is-paid" : "") + "\"></span>",
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    popupAnchor: [0, -9]
+  });
+}
+
+function createClusterLayer() {
+  if (typeof window.L.markerClusterGroup !== "function") return window.L.layerGroup();
+  return window.L.markerClusterGroup({
+    chunkedLoading: true,
+    maxClusterRadius: 46,
+    disableClusteringAtZoom: 15,
+    showCoverageOnHover: false,
+    spiderfyOnMaxZoom: true,
+    iconCreateFunction: function (cluster) {
+      const markers = cluster.getAllChildMarkers();
+      const paidCount = markers.filter(function (marker) { return marker.options.paymentState === "paid"; }).length;
+      const total = markers.length;
+      const state = paidCount === total ? "is-paid" : paidCount ? "is-mixed" : "is-unpaid";
+      const size = total < 10 ? "size-small" : total < 100 ? "size-medium" : "size-large";
+      const paidPercent = Math.round((paidCount / total) * 100);
+      const mixedStyle = state === "is-mixed"
+        ? " style=\"background:conic-gradient(#178856 0 " + paidPercent + "%, #c2413a " + paidPercent + "% 100%)\""
+        : "";
+      return window.L.divIcon({
+        className: "",
+        html: "<span class=\"vehicle-cluster " + state + " " + size + "\"" + mixedStyle + ">" + total + "</span>",
+        iconSize: total < 10 ? [32, 32] : total < 100 ? [41, 41] : [50, 50],
+        iconAnchor: total < 10 ? [16, 16] : total < 100 ? [21, 21] : [25, 25]
+      });
+    }
+  });
+}
+
+function buildPointPopup(item) {
+  const record = item.record;
+  const area = item.area;
+  const status = item.isPaid ? "Sudah lunas" : "Belum lunas";
+  return "<div class=\"map-point-popup\">" +
+    "<strong>" + escapeHtml(record.plate_number || "Nopol belum terbaca") + "</strong>" +
+    "<p><b>Status:</b> " + status + "<br><b>Surat:</b> " + escapeHtml(record.letter_type || "-") + "<br><b>Nominal:</b> " + formatCurrency(getPotential(record)) + "</p>" +
+    "<p><b>Kecamatan:</b> " + escapeHtml(area.label) + "<br><b>Kelurahan:</b> " + escapeHtml(area.village || "Belum terbaca") + "<br><b>Alamat:</b> " + escapeHtml(area.address) + "</p>" +
+    "<small>Titik menunjukkan posisi representatif area, bukan koordinat rumah.</small></div>";
+}
+
+function renderMap(areas, vehicles) {
   if (!initializeMap()) {
     controls.map.textContent = "Peta tidak dapat dimuat pada perangkat ini.";
     return;
   }
 
-  leafletLayer.clearLayers();
-  areaMarkers = new Map();
-  const locatedAreas = areas.filter(function (area) { return Boolean(area.center); });
-  const maxCount = Math.max.apply(null, locatedAreas.map(function (area) { return area.count; }).concat([1]));
-  const bounds = [];
+  if (leafletLayer) leafletMap.removeLayer(leafletLayer);
+  leafletLayer = createClusterLayer().addTo(leafletMap);
+  const bounds = areas.filter(function (area) { return Boolean(area.center); }).map(function (area) {
+    return [area.center.lat, area.center.lng];
+  });
 
-  locatedAreas.forEach(function (area) {
-    const radius = Math.round(7 + (Math.sqrt(area.count / maxCount) * 18));
-    const marker = window.L.circleMarker([area.center.lat, area.center.lng], {
-      radius: radius,
-      color: "#a8322c",
-      weight: 2,
-      fillColor: "#c2413a",
-      fillOpacity: .68
-    }).addTo(leafletLayer);
-    const villageCount = area.villages.size ? area.villages.size + " kelurahan terbaca" : "Kelurahan belum terbaca";
-    marker.bindTooltip("<strong>" + escapeHtml(area.label) + "</strong>" + area.count + " nopol | " + formatCurrency(area.potential) + "<br>" + villageCount);
-    areaMarkers.set(area.key, marker);
-    bounds.push([area.center.lat, area.center.lng]);
+  vehicles.forEach(function (item) {
+    if (!item.area || !item.area.center) return;
+    const marker = window.L.marker(getRepresentativePoint(item), {
+      icon: createVehicleIcon(item.isPaid),
+      paymentState: item.isPaid ? "paid" : "unpaid"
+    });
+    marker.bindTooltip("<strong>" + escapeHtml(item.record.plate_number) + "</strong>" + (item.isPaid ? "Sudah lunas" : "Belum lunas"));
+    marker.bindPopup(buildPointPopup(item));
+    leafletLayer.addLayer(marker);
   });
 
   if (bounds.length) leafletMap.fitBounds(bounds, { padding: [28, 28], maxZoom: 13 });
@@ -328,9 +465,7 @@ function renderMap(areas) {
 
 function focusArea(area) {
   if (!area.center || !leafletMap) return;
-  leafletMap.setView([area.center.lat, area.center.lng], 14, { animate: true });
-  const marker = areaMarkers.get(area.key);
-  if (marker) marker.openTooltip();
+  leafletMap.setView([area.center.lat, area.center.lng], 15, { animate: true });
 }
 
 function renderAreaList(areas) {
@@ -339,7 +474,7 @@ function renderAreaList(areas) {
   if (!areas.length) {
     const empty = document.createElement("p");
     empty.className = "area-empty";
-    empty.textContent = "Tidak ada tunggakan pada filter ini.";
+    empty.textContent = "Tidak ada kendaraan pada filter ini.";
     controls.areaList.append(empty);
     return;
   }
@@ -349,7 +484,7 @@ function renderAreaList(areas) {
     row.type = "button";
     row.className = "area-row" + (area.center ? "" : " is-unmapped");
     row.innerHTML = "<span class=\"area-row-head\"><strong>" + escapeHtml(area.label) + "</strong><span class=\"area-row-count\">" + area.count + " nopol</span></span>" +
-      "<span class=\"area-row-meta\"><span>" + (area.villages.size ? area.villages.size + " kelurahan" : "Alamat belum lengkap") + "</span><strong>" + formatCurrency(area.potential) + "</strong></span>";
+      "<span class=\"area-row-meta\"><span>" + area.unpaidCount + " belum | " + area.paidCount + " lunas</span><strong>" + formatCurrency(area.potential) + "</strong></span>";
     row.disabled = !area.center;
     if (area.center) row.addEventListener("click", function () { focusArea(area); });
     controls.areaList.append(row);
@@ -359,17 +494,18 @@ function renderAreaList(areas) {
 function renderAnalysis() {
   const vehicles = getFilteredVehicles();
   const areas = aggregateAreas(vehicles);
-  const mapped = areas.filter(function (area) { return Boolean(area.center); });
-  const unmapped = areas.find(function (area) { return area.key === "UNMAPPED"; });
+  const paidCount = vehicles.filter(function (item) { return item.isPaid; }).length;
+  const unpaidCount = vehicles.length - paidCount;
   const totalPotential = vehicles.reduce(function (total, item) {
-    return total + getPotential(item.record);
+    return total + (item.isPaid ? 0 : getPotential(item.record));
   }, 0);
 
   controls.vehicleCount.textContent = vehicles.length;
   controls.potential.textContent = formatCurrency(totalPotential);
-  controls.districtCount.textContent = mapped.length;
-  controls.unmappedCount.textContent = unmapped ? unmapped.count : 0;
-  renderMap(areas);
+  controls.paidCount.textContent = paidCount;
+  controls.unpaidCount.textContent = unpaidCount;
+  updateVehicleTypeNotice();
+  renderMap(areas, vehicles);
   renderAreaList(areas);
 }
 
@@ -383,7 +519,9 @@ async function loadAnalysis() {
   try {
     setStatus("Memuat data Buku Produksi...", "loading");
     productionRecords = await fetchProductionRecords();
+    latestVehicles = createLatestVehicles(productionRecords);
     populatePeriodFilter();
+    populateDistrictFilter();
     renderAnalysis();
     setStatus("Database online tersambung.", "online");
     if (controls.source) controls.source.textContent = productionRecords.length + " data Buku Produksi";
@@ -397,7 +535,10 @@ async function loadAnalysis() {
 }
 
 controls.periodFilter.addEventListener("change", renderAnalysis);
+controls.districtFilter.addEventListener("change", renderAnalysis);
 controls.letterFilter.addEventListener("change", renderAnalysis);
+controls.paymentFilter.addEventListener("change", renderAnalysis);
+controls.vehicleTypeFilter.addEventListener("change", renderAnalysis);
 controls.refreshButton.addEventListener("click", loadAnalysis);
 window.addEventListener("resize", function () {
   if (leafletMap) leafletMap.invalidateSize();
