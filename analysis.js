@@ -154,7 +154,7 @@ function buildDailyPaymentPattern(vehicles, selectedPeriod) {
   return days;
 }
 
-function buildPaymentDurations(vehicles) {
+function buildPaymentDurations(records) {
   const buckets = [
     { label: "0-7 hari", count: 0, min: 0, max: 7 },
     { label: "8-14 hari", count: 0, min: 8, max: 14 },
@@ -163,16 +163,27 @@ function buildPaymentDurations(vehicles) {
     { label: "61-90 hari", count: 0, min: 61, max: 90 },
     { label: ">90 hari", count: 0, min: 91, max: Infinity }
   ];
+  const byPlate = new Map();
+
+  records.forEach((record) => {
+    const plateKey = getPlateKey(record);
+    const recordedDate = getIsoDate(record.recorded_date);
+    if (!plateKey || !recordedDate) return;
+
+    const history = byPlate.get(plateKey) || { firstRecordedDate: recordedDate, paidDates: [] };
+    if (recordedDate < history.firstRecordedDate) history.firstRecordedDate = recordedDate;
+
+    const paidDate = getIsoDate(record.paid_date);
+    if (isExplicitlyPaid(record) && paidDate) history.paidDates.push(paidDate);
+    byPlate.set(plateKey, history);
+  });
+
   const durations = [];
+  byPlate.forEach((history) => {
+    const firstPaidDate = history.paidDates.sort().find((paidDate) => paidDate >= history.firstRecordedDate);
+    if (!firstPaidDate) return;
 
-  vehicles.filter((item) => item.isPaid).forEach((item) => {
-    const recordedDate = getIsoDate(item.record.recorded_date);
-    const paidDate = getIsoDate(item.record.paid_date);
-    if (!recordedDate || !paidDate) return;
-
-    const duration = Math.floor((new Date(`${paidDate}T00:00:00`).getTime() - new Date(`${recordedDate}T00:00:00`).getTime()) / 86400000);
-    if (duration < 0) return;
-
+    const duration = Math.floor((new Date(`${firstPaidDate}T00:00:00`).getTime() - new Date(`${history.firstRecordedDate}T00:00:00`).getTime()) / 86400000);
     durations.push(duration);
     const bucket = buckets.find((itemBucket) => duration >= itemBucket.min && duration <= itemBucket.max);
     if (bucket) bucket.count += 1;
@@ -246,7 +257,7 @@ function renderPaymentDuration(durationData) {
 
   if (sortedDurations.length) {
     setMetric(controls.averagePaymentDuration, `${average.toLocaleString("id-ID", { maximumFractionDigits: 1 })} hari rata-rata`);
-    setMetric(controls.paymentDurationDetail, `Median ${median.toLocaleString("id-ID", { maximumFractionDigits: 1 })} hari. ${withinThirtyRate.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% lunas dalam 30 hari.`);
+    setMetric(controls.paymentDurationDetail, `${formatNumber(sortedDurations.length)} nopol berpasangan. Median ${median.toLocaleString("id-ID", { maximumFractionDigits: 1 })} hari. ${withinThirtyRate.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% lunas dalam 30 hari.`);
   } else {
     setMetric(controls.averagePaymentDuration, "Belum ada data");
     setMetric(controls.paymentDurationDetail, "Belum ada nopol dengan Tgl Rekam dan Tgl Bayar yang lengkap.");
@@ -294,7 +305,7 @@ function renderAnalysis() {
   const selectedPeriod = controls.recordedPeriodFilter.value;
   const vehicles = createMonthlyVehicles(productionRecords, selectedPeriod);
   const dailyPayments = buildDailyPaymentPattern(vehicles, selectedPeriod);
-  const paymentDurations = buildPaymentDurations(vehicles);
+  const paymentDurations = buildPaymentDurations(productionRecords);
   renderMetrics(vehicles, dailyPayments);
   renderDailyPaymentChart(dailyPayments);
   renderPaymentDuration(paymentDurations);
