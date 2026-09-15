@@ -26,11 +26,12 @@ if (!supabaseUrl || !supabaseKey) throw new Error("Konfigurasi Supabase tidak di
 const letterRank = { SPOS: 1, NPP: 2, NTP: 3 };
 
 function isExplicitlyPaid(record) {
-  const sourceText = String(record.source_text || "").toUpperCase();
-  if (!sourceText) return false;
-  const hasUnpaidMarker = /\b(BELUM|TIDAK)\s+(?:TERDETEKSI\s+)?(?:LUNAS|BAYAR)\b/.test(sourceText);
-  const hasPaidMarker = /\b(LUNAS|SUDAH\s+BAYAR|TERBAYAR|PAID)\b/.test(sourceText);
-  return !hasUnpaidMarker && hasPaidMarker;
+  const evidence = [record.status, record.source_text, record.paid_date].join(" ").toUpperCase();
+  const hasUnpaidMarker = /\b(BELUM|TIDAK)\s+(?:TERDETEKSI\s+)?(?:LUNAS|BAYAR)\b/.test(evidence);
+  const hasPaidMarker = /\b(LUNAS|SUDAH\s+BAYAR|TERBAYAR|PAID)\b/.test(evidence);
+  if (hasPaidMarker && !hasUnpaidMarker) return true;
+  if (hasUnpaidMarker) return false;
+  return Boolean(record.is_paid);
 }
 
 function selectProductionRecord(candidates) {

@@ -59,7 +59,7 @@ Ada dua cara untuk memakai data SIAPP sebagai pembanding status nopol.
 3. Pasang tombol `Sinkron SIAPP` sebagai bookmark Chrome.
 4. Saat Buku Produksi SIAPP sedang tampil, klik bookmark `Sinkron SIAPP`.
 5. Bookmark akan mencoba membaca menu `SPOS`, `NPP`, `NTP`, seluruh bulan/tahun yang tersedia, dan halaman yang bisa dijangkau.
-6. Data nopol dan status bayar akan dikirim ke tabel Buku Produksi Supabase.
+6. Data nopol dan status bayar akan dikirim ke tabel Buku Produksi Supabase. Gunakan `Sinkron Lengkap` setiap kali perlu mencocokkan seluruh riwayat; `Pantau Otomatis` juga membaca ulang semua periode yang masih belum lunas saat pertama dijalankan dan setiap 30 menit berikutnya.
 
 Cara ini tidak menyimpan username atau password SIAPP di aplikasi.
 

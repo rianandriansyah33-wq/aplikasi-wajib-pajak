@@ -4,6 +4,7 @@ const PRODUCTION_SYNC_META_KEY = "wajibPajakProductionLastSyncAt";
 const PRODUCTION_SUMMARY_STORAGE_KEY = "wajibPajakProductionSummary";
 const PENDING_UPSERT_STORAGE_KEY = "wajibPajakPendingRemoteUpserts";
 const PENDING_DELETE_STORAGE_KEY = "wajibPajakPendingRemoteDeletes";
+const MAX_LOCAL_PRODUCTION_CACHE_BYTES = 1500000;
 const REMOTE_REFRESH_INTERVAL_MS = 15000;
 const REMOTE_PRODUCTION_REFRESH_INTERVAL_MS = 300000;
 const REMOTE_WRITE_SETTLE_MS = 2000;
@@ -223,7 +224,22 @@ function loadProductionRecords() {
 }
 
 function saveProductionRecords() {
-  localStorage.setItem(PRODUCTION_STORAGE_KEY, JSON.stringify(productionRecords));
+  const serialized = JSON.stringify(productionRecords);
+
+  // Supabase is the source of truth. Browsers commonly cap localStorage at
+  // about 5 MB, which is smaller than a complete SIAPP production history.
+  // Drop an oversized cache instead of leaving a stale partial snapshot.
+  if (serialized.length > MAX_LOCAL_PRODUCTION_CACHE_BYTES) {
+    localStorage.removeItem(PRODUCTION_STORAGE_KEY);
+    return;
+  }
+
+  try {
+    localStorage.setItem(PRODUCTION_STORAGE_KEY, serialized);
+  } catch (error) {
+    localStorage.removeItem(PRODUCTION_STORAGE_KEY);
+    console.warn("Cache Buku Produksi lokal dilewati karena kapasitas browser penuh.", error);
+  }
 }
 
 function loadProductionLastSyncAt() {
@@ -1499,13 +1515,16 @@ function detectProductionPayment(rawText) {
 
 function isProductionRecordPaid(record) {
   if (!record) return false;
-  const sourceText = String(record.sourceText || "").trim();
-  if (sourceText) return detectProductionPayment(sourceText).isPaid;
+  const payment = detectProductionPayment([record.status, record.sourceText, record.paidDate].join(" "));
+  if (payment.isPaid) return true;
 
-  // Old rows could contain an incorrect is_paid flag. Without the original
-  // SIAPP row there is no evidence of payment, so keep it unpaid until a
-  // subsequent sync supplies sourceText with an explicit paid marker.
-  return false;
+  const evidence = normalizeUpperText([record.status, record.sourceText].join(" "));
+  const hasUnpaidMarker = /\b(BELUM|TIDAK)\s+(?:TERDETEKSI\s+)?(?:LUNAS|BAYAR)\b/.test(evidence);
+  if (hasUnpaidMarker) return false;
+
+  // Supabase stores the explicit result parsed from SIAPP. Keep it when an
+  // old source snapshot has no readable status text.
+  return Boolean(record.isPaid);
 }
 
 function getProductionOwnerFromContext(context, plateNumber) {
