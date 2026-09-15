@@ -4,7 +4,7 @@
   const supabaseUrl = String(config.supabaseUrl || "").replace(/\/$/, "");
   const supabasePublishableKey = String(config.supabasePublishableKey || "");
   const databaseProvider = String(config.databaseProvider || "google-script").toLowerCase();
-  const syncMode = config.syncMode === "full" ? "full" : config.syncMode === "watch" ? "watch" : "quick";
+  const syncMode = config.syncMode === "full" ? "full" : config.syncMode === "refresh" ? "refresh" : config.syncMode === "period" ? "period" : config.syncMode === "watch" ? "watch" : "quick";
   const watchIntervalMs = Number(config.watchIntervalMs) || 60000;
   const jasaRaharjaRoda4 = 143000;
   const dendaRoda4Per3Bulan = 35000;
@@ -718,15 +718,46 @@
     }];
   }
 
-  async function fetchOutstandingProductionScopes() {
+  function getConfiguredPeriod() {
+    const configured = config.syncPeriod || {};
+    const month = Number(configured.month);
+    const year = Number(configured.year);
+    if (month < 1 || month > 12 || year < 2000 || year > 2100) return null;
+    return { month: month, year: year };
+  }
+
+  function getPeriodFilterForTarget(targetDocument, period) {
+    if (!period) return [];
+    const controls = getControlSet(targetDocument);
+    const monthOption = getMonthOptions(controls.monthSelect).find(function (option) {
+      return Number(option.month) === Number(period.month);
+    });
+    const yearOption = getYearOptions(controls.yearSelect).find(function (option) {
+      return Number(option.year) === Number(period.year);
+    });
+    if (!monthOption || !yearOption) return [];
+
+    return [{
+      month: period.month,
+      monthValue: monthOption.value,
+      monthLabel: monthOption.label,
+      year: period.year,
+      yearValue: yearOption.value,
+      yearLabel: yearOption.label,
+      perPageValue: getMaxPerPageValue(controls.perPageSelect) || "100"
+    }];
+  }
+
+  async function fetchProductionScopes(options) {
     if (databaseProvider !== "supabase") return [];
 
+    const onlyUnpaid = Boolean(options && options.onlyUnpaid);
     const scopes = [];
     const pageSize = 1000;
     for (let from = 0; ; from += pageSize) {
       const endpoint = new URL(supabaseUrl + "/rest/v1/production_records");
       endpoint.searchParams.set("select", "letter_type,month,year");
-      endpoint.searchParams.set("is_paid", "eq.false");
+      if (onlyUnpaid) endpoint.searchParams.set("is_paid", "eq.false");
       const response = await fetch(endpoint.toString(), {
         headers: {
           apikey: supabasePublishableKey,
@@ -734,7 +765,7 @@
           Range: from + "-" + (from + pageSize - 1)
         }
       });
-      if (!response.ok) throw new Error("Supabase tidak dapat membaca periode tunggakan.");
+      if (!response.ok) throw new Error("Supabase tidak dapat membaca periode Buku Produksi.");
       const page = await response.json();
       scopes.push.apply(scopes, Array.isArray(page) ? page : []);
       if (!Array.isArray(page) || page.length < pageSize) break;
@@ -742,7 +773,15 @@
     return scopes;
   }
 
-  function getOutstandingFiltersForTarget(targetDocument, target, scopes, sourceDocument) {
+  async function fetchOutstandingProductionScopes() {
+    return fetchProductionScopes({ onlyUnpaid: true });
+  }
+
+  async function fetchStoredProductionScopes() {
+    return fetchProductionScopes();
+  }
+
+  function getStoredFiltersForTarget(targetDocument, target, scopes, sourceDocument) {
     const controls = getControlSet(targetDocument);
     const monthOptions = getMonthOptions(controls.monthSelect);
     const yearOptions = getYearOptions(controls.yearSelect);
@@ -1085,9 +1124,12 @@
   async function run(options) {
     const settings = options || {};
     const isFullSync = syncMode === "full";
+    const isRefreshSync = syncMode === "refresh";
+    const isPeriodSync = syncMode === "period";
     const isWatchSync = syncMode === "watch";
     const shouldReconcileOutstanding = isWatchSync && Boolean(settings.reconcileOutstanding);
-    setStatus(isFullSync ? "Menyiapkan Sinkron SIAPP lengkap..." : isWatchSync ? "Memantau SIAPP..." : "Menyiapkan Sinkron SIAPP cepat...");
+    const selectedPeriod = isPeriodSync ? getConfiguredPeriod() : null;
+    setStatus(isFullSync ? "Menyiapkan Sinkron SIAPP lengkap..." : isRefreshSync ? "Menyiapkan pembaruan seluruh data..." : isPeriodSync ? "Menyiapkan Sinkron Periode..." : isWatchSync ? "Memantau SIAPP..." : "Menyiapkan Sinkron SIAPP cepat...");
 
     if (databaseProvider === "supabase" && (!supabaseUrl || !supabasePublishableKey)) {
       setStatus("Konfigurasi Supabase belum tersedia.", "rgb(180,35,24)");
@@ -1102,7 +1144,13 @@
     }
 
     try {
-      const targets = isFullSync ? discoverProductionTargets() : discoverQuickProductionTargets();
+      if (isPeriodSync && !selectedPeriod) {
+        setStatus("Bulan atau tahun Sinkron Periode tidak valid.", "rgb(180,35,24)");
+        if (!settings.silent) alert("Pilih bulan dan tahun yang valid untuk Sinkron Periode.");
+        return;
+      }
+
+      const targets = isFullSync || isRefreshSync || isPeriodSync ? discoverProductionTargets() : discoverQuickProductionTargets();
       if (!targets.length) {
         setStatus("Menu Buku Produksi tidak ditemukan.", "rgb(180,35,24)");
         if (!settings.silent) alert("Menu Buku Produksi tidak ditemukan di halaman SIAPP.");
@@ -1121,7 +1169,30 @@
         }
       }
 
+      if (isRefreshSync) {
+        const approved = confirm("Perbarui Semua Cepat akan membaca ulang semua periode Buku Produksi yang sudah tersimpan di aplikasi, sampai seluruh halaman pada tiap periode selesai. Proses ini jauh lebih cepat daripada memindai semua bulan kosong. Untuk mencari periode lama yang belum pernah masuk aplikasi, tetap gunakan Sinkron Lengkap. Lanjutkan?");
+        if (!approved) {
+          setStatus("Pembaruan seluruh data dibatalkan.", "rgb(107,114,128)");
+          return;
+        }
+      }
+
+      if (isPeriodSync) {
+        const periodLabel = monthLabelFromNumber(selectedPeriod.month) + " " + selectedPeriod.year;
+        const approved = confirm("Sinkron Periode akan membaca SPOS, NPP, dan NTP untuk " + periodLabel + ", termasuk seluruh halaman pada periode itu. Lanjutkan?");
+        if (!approved) {
+          setStatus("Sinkron Periode dibatalkan.", "rgb(107,114,128)");
+          return;
+        }
+      }
+
       const outstandingScopes = shouldReconcileOutstanding ? await fetchOutstandingProductionScopes() : [];
+      const storedScopes = isRefreshSync ? await fetchStoredProductionScopes() : [];
+      if (isRefreshSync && !storedScopes.length) {
+        setStatus("Belum ada periode Buku Produksi tersimpan. Jalankan Sinkron Lengkap terlebih dahulu.", "rgb(180,35,24)");
+        if (!settings.silent) alert("Belum ada periode Buku Produksi tersimpan. Jalankan Sinkron Lengkap terlebih dahulu.");
+        return;
+      }
       let frame = null;
       let filterNumber = 0;
       let totalFilters = 0;
@@ -1133,8 +1204,12 @@
         const targetDocument = target.url === window.location.href ? document : await fetchDocument(target.url);
         const filters = isFullSync
           ? getTargetFiltersFromDocument(targetDocument)
+          : isRefreshSync
+            ? getStoredFiltersForTarget(targetDocument, target, storedScopes, document)
+          : isPeriodSync
+            ? getPeriodFilterForTarget(targetDocument, selectedPeriod)
           : shouldReconcileOutstanding
-            ? getOutstandingFiltersForTarget(targetDocument, target, outstandingScopes, document)
+            ? getStoredFiltersForTarget(targetDocument, target, outstandingScopes, document)
             : getQuickFilterForTarget(targetDocument, document);
         let frameLoaded = false;
         totalFilters += filters.length;
@@ -1142,7 +1217,7 @@
         for (let filterIndex = 0; filterIndex < filters.length; filterIndex += 1) {
           filterNumber += 1;
           const filter = filters[filterIndex];
-          const progressText = isFullSync ? "Sinkron lengkap " + filterNumber + "/" + (totalFilters || "?") : isWatchSync ? "Pantau otomatis " + filterNumber + "/" + (totalFilters || "?") : "Sinkron cepat " + filterNumber + "/" + (totalFilters || "?");
+          const progressText = isFullSync ? "Sinkron lengkap " + filterNumber + "/" + (totalFilters || "?") : isRefreshSync ? "Perbarui semua cepat " + filterNumber + "/" + (totalFilters || "?") : isPeriodSync ? "Sinkron periode " + filterNumber + "/" + (totalFilters || "?") : isWatchSync ? "Pantau otomatis " + filterNumber + "/" + (totalFilters || "?") : "Sinkron cepat " + filterNumber + "/" + (totalFilters || "?");
           setStatus(progressText + " - " + target.letterType + " " + filter.monthLabel + " " + filter.yearLabel);
           let parsed = await collectDirectEndpointRecords(target, filter, targetDocument);
 
@@ -1165,14 +1240,22 @@
         }
       }
 
+      if (isPeriodSync && totalFilters === 0) {
+        const periodLabel = monthLabelFromNumber(selectedPeriod.month) + " " + selectedPeriod.year;
+        setStatus("Periode " + periodLabel + " tidak tersedia di Buku Produksi SIAPP.", "rgb(180,35,24)");
+        if (!settings.silent) alert("Periode " + periodLabel + " tidak tersedia di Buku Produksi SIAPP.");
+        return;
+      }
+
       if (isWatchSync) {
         const scopeMessage = shouldReconcileOutstanding
           ? " Rekonsiliasi periode tunggakan selesai."
           : "";
-        setStatus("Pantau aktif. Sinkron terakhir mengirim " + totalRecords + " data." + scopeMessage + " Berikutnya otomatis tiap " + Math.round(watchIntervalMs / 60000) + " menit.", "rgb(22,101,52)");
+        setStatus("Pantau aktif. Bulan berjalan dicek tiap " + Math.round(watchIntervalMs / 60000) + " menit; periode lama yang belum lunas dicek tiap 30 menit. Sinkron terakhir mengirim " + totalRecords + " data." + scopeMessage, "rgb(22,101,52)");
       } else {
-        setStatus("Sinkron selesai. " + totalRecords + " data SIAPP dikirim.", "rgb(22,101,52)");
-        if (!settings.silent) alert("Sinkron SIAPP selesai. " + totalRecords + " data dikirim ke aplikasi.");
+        const completionLabel = isRefreshSync ? "Pembaruan seluruh data selesai" : isPeriodSync ? "Sinkron Periode selesai" : "Sinkron selesai";
+        setStatus(completionLabel + ". " + totalRecords + " data SIAPP dikirim.", "rgb(22,101,52)");
+        if (!settings.silent) alert(completionLabel + ". " + totalRecords + " data dikirim ke aplikasi.");
       }
     } catch (error) {
       console.error(error);
@@ -1189,15 +1272,17 @@
       return;
     }
 
-    let watchTick = 0;
+    const outstandingReconcileIntervalMs = 30 * 60 * 1000;
+    let lastOutstandingReconcileAt = 0;
     async function runWatchTick() {
       if (window.__WAJIB_PAJAK_SYNC_WATCH_RUNNING) return;
       window.__WAJIB_PAJAK_SYNC_WATCH_RUNNING = true;
       try {
-        // Recheck every still-unpaid period on first run, then every 30
-        // minutes. Other ticks remain lightweight and scan the current month.
-        const reconcileOutstanding = watchTick % 6 === 0;
-        watchTick += 1;
+        // Recheck all stored unpaid periods immediately, then precisely every
+        // 30 minutes. Other ticks remain lightweight and scan the current month.
+        const now = Date.now();
+        const reconcileOutstanding = !lastOutstandingReconcileAt || now - lastOutstandingReconcileAt >= outstandingReconcileIntervalMs;
+        if (reconcileOutstanding) lastOutstandingReconcileAt = now;
         await run({ silent: true, reconcileOutstanding: reconcileOutstanding });
       } finally {
         window.__WAJIB_PAJAK_SYNC_WATCH_RUNNING = false;

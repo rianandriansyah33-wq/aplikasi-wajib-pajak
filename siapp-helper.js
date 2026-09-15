@@ -1,9 +1,13 @@
 (function () {
   const bookmarkletLink = document.querySelector("#bookmarkletLink");
+  const periodBookmarkletLink = document.querySelector("#periodBookmarkletLink");
+  const refreshBookmarkletLink = document.querySelector("#refreshBookmarkletLink");
   const watchBookmarkletLink = document.querySelector("#watchBookmarkletLink");
   const fullBookmarkletLink = document.querySelector("#fullBookmarkletLink");
   const copyButton = document.querySelector("#copyBookmarkletBtn");
   const watchIntervalSelect = document.querySelector("#watchIntervalSelect");
+  const periodMonthSelect = document.querySelector("#periodMonthSelect");
+  const periodYearInput = document.querySelector("#periodYearInput");
   const statusText = document.querySelector("#helperStatus");
   const appConfig = window.APP_CONFIG || {};
   const googleScriptUrl = appConfig.GOOGLE_SCRIPT_URL;
@@ -26,6 +30,19 @@
     return minutes + " menit";
   }
 
+  function getSelectedPeriod() {
+    const currentDate = new Date();
+    const month = Number(periodMonthSelect && periodMonthSelect.value) || currentDate.getMonth() + 1;
+    const year = Number(periodYearInput && periodYearInput.value) || currentDate.getFullYear();
+    return { month: month, year: year };
+  }
+
+  function initializePeriodControls() {
+    const period = getSelectedPeriod();
+    if (periodMonthSelect && !periodMonthSelect.value) periodMonthSelect.value = String(period.month);
+    if (periodYearInput && !periodYearInput.value) periodYearInput.value = String(period.year);
+  }
+
   function buildBookmarklet(mode) {
     const config = {
       googleScriptUrl: googleScriptUrl,
@@ -34,7 +51,8 @@
       supabasePublishableKey: supabasePublishableKey,
       syncScriptUrl: syncScriptUrl,
       syncMode: mode || "quick",
-      watchIntervalMs: getWatchIntervalMs()
+      watchIntervalMs: getWatchIntervalMs(),
+      syncPeriod: mode === "period" ? getSelectedPeriod() : null
     };
     const source = [
       "(function(){",
@@ -54,21 +72,27 @@
 
   function updateBookmarklets() {
     const quickBookmarklet = buildBookmarklet("quick");
+    const periodBookmarklet = buildBookmarklet("period");
+    const refreshBookmarklet = buildBookmarklet("refresh");
     const watchBookmarklet = buildBookmarklet("watch");
     const fullBookmarklet = buildBookmarklet("full");
     if (bookmarkletLink) bookmarkletLink.href = quickBookmarklet;
+    if (periodBookmarkletLink) periodBookmarkletLink.href = periodBookmarklet;
+    if (refreshBookmarkletLink) refreshBookmarkletLink.href = refreshBookmarklet;
     if (watchBookmarkletLink) {
       watchBookmarkletLink.href = watchBookmarklet;
       watchBookmarkletLink.textContent = "Pantau " + getWatchIntervalLabel();
     }
     if (fullBookmarkletLink) fullBookmarkletLink.href = fullBookmarklet;
-    showStatus("Tombol siap dipasang. Pantau Otomatis akan cek SIAPP tiap " + getWatchIntervalLabel() + ".");
-    return { quickBookmarklet: quickBookmarklet, watchBookmarklet: watchBookmarklet, fullBookmarklet: fullBookmarklet };
+    showStatus("Tombol siap dipasang. Sinkron Periode memakai bulan dan tahun yang dipilih; Pantau Otomatis memeriksa bulan berjalan tiap " + getWatchIntervalLabel() + " dan tunggakan periode lama tiap 30 menit.");
+    return { quickBookmarklet: quickBookmarklet, periodBookmarklet: periodBookmarklet, refreshBookmarklet: refreshBookmarklet, watchBookmarklet: watchBookmarklet, fullBookmarklet: fullBookmarklet };
   }
 
   if (databaseProvider === "supabase" && (!supabaseUrl || !supabasePublishableKey)) {
     showStatus("Konfigurasi Supabase belum terisi di config.js.");
     if (bookmarkletLink) bookmarkletLink.removeAttribute("href");
+    if (periodBookmarkletLink) periodBookmarkletLink.removeAttribute("href");
+    if (refreshBookmarkletLink) refreshBookmarkletLink.removeAttribute("href");
     if (watchBookmarkletLink) watchBookmarkletLink.removeAttribute("href");
     if (fullBookmarkletLink) fullBookmarkletLink.removeAttribute("href");
     if (copyButton) copyButton.disabled = true;
@@ -78,16 +102,26 @@
   if (databaseProvider !== "supabase" && !googleScriptUrl) {
     showStatus("URL Google Apps Script belum terisi di config.js.");
     if (bookmarkletLink) bookmarkletLink.removeAttribute("href");
+    if (periodBookmarkletLink) periodBookmarkletLink.removeAttribute("href");
+    if (refreshBookmarkletLink) refreshBookmarkletLink.removeAttribute("href");
     if (watchBookmarkletLink) watchBookmarkletLink.removeAttribute("href");
     if (fullBookmarkletLink) fullBookmarkletLink.removeAttribute("href");
     if (copyButton) copyButton.disabled = true;
     return;
   }
 
+  initializePeriodControls();
   let bookmarklets = updateBookmarklets();
 
-  if (watchIntervalSelect) {
-    watchIntervalSelect.addEventListener("change", function () {
+  [watchIntervalSelect, periodMonthSelect, periodYearInput].forEach(function (control) {
+    if (!control) return;
+    control.addEventListener("change", function () {
+      bookmarklets = updateBookmarklets();
+    });
+  });
+
+  if (periodYearInput) {
+    periodYearInput.addEventListener("input", function () {
       bookmarklets = updateBookmarklets();
     });
   }

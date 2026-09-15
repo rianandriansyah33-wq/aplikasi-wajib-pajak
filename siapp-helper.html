@@ -13,7 +13,7 @@
       <section class="helper-panel">
         <p class="eyebrow">Integrasi SIAPP</p>
         <h1>Sinkron Buku Produksi</h1>
-        <p class="helper-subtitle">Pasang tombol ini sebagai bookmark, lalu klik setelah login SIAPP. Pakai Sinkron Cepat untuk membaca SPOS, NPP, dan NTP bulan berjalan sekaligus. Pantau Otomatis juga merekonsiliasi semua periode yang masih belum lunas saat mulai berjalan, lalu setiap 30 menit selama tab SIAPP tetap terbuka.</p>
+        <p class="helper-subtitle">Pasang tombol ini sebagai bookmark, lalu klik setelah login SIAPP. Sinkron Cepat membaca bulan berjalan. Pantau Otomatis juga membaca ulang semua periode lama yang masih belum lunas setiap 30 menit, sehingga pelunasan historis dapat diperbarui tanpa Sinkron Lengkap. Perbarui Semua Cepat membaca ulang seluruh periode Buku Produksi yang sudah tersimpan.</p>
 
         <div class="helper-control-panel">
           <label>
@@ -24,11 +24,34 @@
               <option value="600000">10 menit - lebih ringan</option>
             </select>
           </label>
+          <label>
+            <span>Bulan Sinkron Periode</span>
+            <select class="form-select" id="periodMonthSelect">
+              <option value="1">Januari</option>
+              <option value="2">Februari</option>
+              <option value="3">Maret</option>
+              <option value="4">April</option>
+              <option value="5">Mei</option>
+              <option value="6">Juni</option>
+              <option value="7">Juli</option>
+              <option value="8">Agustus</option>
+              <option value="9">September</option>
+              <option value="10">Oktober</option>
+              <option value="11">November</option>
+              <option value="12">Desember</option>
+            </select>
+          </label>
+          <label>
+            <span>Tahun Sinkron Periode</span>
+            <input class="form-control" id="periodYearInput" type="number" min="2000" max="2100" inputmode="numeric" />
+          </label>
           <a class="secondary-button helper-open-siapp" href="https://siapp.dipendajatim.go.id/idxstat.php" target="_blank" rel="noopener">Buka SIAPP</a>
         </div>
 
         <div class="helper-actions">
           <a class="primary-button bookmarklet-link" id="bookmarkletLink" href="#">Sinkron Cepat</a>
+          <a class="secondary-button bookmarklet-link" id="periodBookmarkletLink" href="#">Sinkron Periode</a>
+          <a class="secondary-button bookmarklet-link" id="refreshBookmarkletLink" href="#">Perbarui Semua Cepat</a>
           <a class="secondary-button bookmarklet-link" id="watchBookmarkletLink" href="#">Pantau Otomatis</a>
           <a class="secondary-button bookmarklet-link" id="fullBookmarkletLink" href="#">Sinkron Lengkap</a>
         </div>
@@ -44,7 +67,7 @@
           </div>
           <div>
             <span>3</span>
-            <strong>Klik Pantau Otomatis untuk memeriksa bulan berjalan berkala dan memperbarui status lunas pada periode sebelumnya.</strong>
+            <strong>Pilih bulan dan tahun lalu klik Sinkron Periode untuk riwayat tertentu, misalnya Juli 2025. Perbarui Semua Cepat untuk seluruh periode tersimpan; Sinkron Lengkap hanya untuk pemindaian awal.</strong>
           </div>
         </div>
 
@@ -55,6 +78,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="config.js?v=20260910-1235"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="siapp-helper.js?v=20260910-1235"></script>
+    <script src="siapp-helper.js?v=20260915-1730"></script>
   </body>
 </html>
