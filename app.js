@@ -18,8 +18,6 @@ const JASA_RAHARJA_RODA_4 = 143000;
 const DENDA_RODA_4_PER_3_BULAN = 35000;
 const LETTER_SEQUENCE = ["SPOS", "NPP", "NTP"];
 const WHATSAPP_REMINDER_LIMIT = 10;
-const WHATSAPP_ECHANNEL_POSTER_PATH = "assets/e-channel-samsat-jatim.jpg";
-const WHATSAPP_ECHANNEL_SHARE_PATH = "e-channel.html?v=20260915-1825";
 const LETTER_OFFSETS = {
   SPOS: 15,
   NPP: 30,
@@ -1632,21 +1630,13 @@ function getWhatsappReminderSummary(record) {
   };
 }
 
-function getEchannelPosterUrl() {
-  return new URL(WHATSAPP_ECHANNEL_SHARE_PATH, window.location.href).href;
-}
-
-function getEchannelPosterDownloadUrl() {
-  return new URL(WHATSAPP_ECHANNEL_POSTER_PATH, window.location.href).href;
-}
-
 function getWhatsappMessage(record) {
   const reminder = getWhatsappReminderSummary(record);
   const reminderNumber = reminder.nextNumber;
   const name = record.ownerName ? "Bapak/Ibu " + record.ownerName : "Bapak/Ibu";
   const plate = record.plateNumber || "kendaraan yang tercatat";
   const greeting = getJakartaGreeting() + ", " + name + ".";
-  const paymentInfo = "\n\nInformasi kanal pembayaran e-Samsat Jatim: " + getEchannelPosterUrl();
+  const paymentInfo = "\n\nUntuk kemudahan, pembayaran dapat dilakukan melalui layanan e-Samsat Jatim, antara lain SIGNAL, Tokopedia, LinkAja, GoPay, Alfamidi, Pos Indonesia, Alfamart, Indomaret, Bank Jatim, dan Shopee. Bapak/Ibu dapat memilih cara pembayaran yang paling nyaman.\n\nInformasi pilihan kanal dan petunjuk pembayaran dapat diakses melalui: https://linkbio.co/Echannelsamsatmanyar";
   const paidNote = " Bila pembayaran sudah dilakukan, mohon abaikan pesan ini.";
   const templates = {
     1: greeting + "\n\nPerkenalkan, kami dari SAMSAT Manyar. Mohon konfirmasi, apakah Bapak/Ibu merupakan pemilik atau pengguna kendaraan nomor polisi *" + plate + "*? Pesan ini kami sampaikan untuk memastikan informasi pajak kendaraan diterima oleh pihak yang tepat. Terima kasih.",
@@ -1654,7 +1644,7 @@ function getWhatsappMessage(record) {
     3: greeting + "\n\nKami menyampaikan pengingat lanjutan untuk pajak kendaraan *" + plate + "*. Pembayaran dapat dilakukan melalui kanal e-Samsat sesuai pilihan yang paling nyaman." + paidNote + paymentInfo,
     4: greeting + "\n\nApabila Bapak/Ibu memerlukan waktu untuk menyelesaikan pembayaran pajak kendaraan *" + plate + "*, kami siap membantu memberikan informasi kanal pembayaran yang tersedia." + paidNote + paymentInfo,
     5: greeting + "\n\nKami mohon perhatian Bapak/Ibu terhadap status pajak kendaraan *" + plate + "*. Untuk kemudahan, pembayaran dapat dilakukan melalui layanan e-Samsat tanpa perlu mengantre." + paidNote + paymentInfo,
-    6: greeting + "\n\nKami ingin membantu agar pembayaran pajak kendaraan *" + plate + "* dapat dijadwalkan sesuai waktu yang nyaman bagi Bapak/Ibu. Informasi kanal pembayaran tersedia pada tautan berikut." + paidNote + paymentInfo,
+    6: greeting + "\n\nKami ingin membantu agar pembayaran pajak kendaraan *" + plate + "* dapat dijadwalkan sesuai waktu yang nyaman bagi Bapak/Ibu. Layanan e-Samsat dapat menjadi pilihan pembayaran yang praktis." + paidNote + paymentInfo,
     7: greeting + "\n\nKami kembali mengingatkan secara sopan mengenai pajak kendaraan *" + plate + "*. Mohon berkenan melakukan pengecekan; apabila ada kendala, Bapak/Ibu dapat menggunakan salah satu kanal e-Samsat." + paidNote + paymentInfo,
     8: greeting + "\n\nSebagai tindak lanjut layanan, kami menyampaikan pengingat pajak kendaraan *" + plate + "*. Pembayaran melalui e-Samsat dapat menjadi pilihan praktis sesuai kebutuhan Bapak/Ibu." + paidNote + paymentInfo,
     9: greeting + "\n\nKami mohon konfirmasi kembali terkait pembayaran pajak kendaraan *" + plate + "*. Apabila belum terbayarkan, berikut informasi kanal pembayaran yang dapat dipertimbangkan." + paidNote + paymentInfo,
@@ -1760,34 +1750,6 @@ function createWhatsappReminderSection(record) {
   state.textContent = paid ? "Riwayat reminder tetap tersimpan." : getWhatsappReminderStateText(reminder);
 
   section.append(heading, templatePreview, state);
-
-  if (!paid && reminder.nextNumber >= 2) {
-    const posterLink = document.createElement("a");
-    posterLink.className = "echannel-poster-link";
-    posterLink.href = getEchannelPosterUrl();
-    posterLink.target = "_blank";
-    posterLink.rel = "noopener";
-    posterLink.title = "Buka poster e-channel Samsat Jatim";
-
-    const poster = document.createElement("img");
-    poster.className = "echannel-poster";
-    poster.src = WHATSAPP_ECHANNEL_POSTER_PATH;
-    poster.alt = "Informasi kanal pembayaran e-Samsat Jatim";
-    poster.loading = "lazy";
-    posterLink.append(poster);
-
-    const posterActions = document.createElement("div");
-    posterActions.className = "echannel-poster-actions";
-    const downloadLink = document.createElement("a");
-    downloadLink.className = "echannel-poster-download";
-    downloadLink.href = getEchannelPosterDownloadUrl();
-    downloadLink.download = "informasi-echannel-samsat-jatim.jpg";
-    downloadLink.textContent = "Unduh Poster";
-    downloadLink.title = "Unduh poster untuk dilampirkan sebagai gambar di WhatsApp";
-    posterActions.append(downloadLink);
-
-    section.append(posterLink, posterActions);
-  }
 
   return section;
 }

@@ -31,7 +31,7 @@ Data laptop dan HP akan memakai database Supabase yang sama. Aplikasi tidak lagi
 
 Sebelum memakai fitur reminder pertama kali, jalankan [supabase-reminder-migration.sql](supabase-reminder-migration.sql) melalui Supabase `SQL Editor`. Riwayat reminder disimpan per nopol dan disinkronkan antar perangkat.
 
-Tombol WhatsApp membuka template reminder berikutnya, sedangkan tombol `Tandai #...` dipakai setelah pesan benar-benar dikirim. Penandaan sengaja dipisah agar membuka WhatsApp tanpa mengirim pesan tidak menaikkan hitungan reminder. Template ke-2 sampai ke-10 menyertakan tautan poster e-channel; WhatsApp dari browser tidak dapat melampirkan file gambar secara otomatis.
+Tombol WhatsApp membuka template reminder berikutnya, sedangkan tombol `Tandai #...` dipakai setelah pesan benar-benar dikirim. Penandaan sengaja dipisah agar membuka WhatsApp tanpa mengirim pesan tidak menaikkan hitungan reminder. Template ke-2 sampai ke-10 memakai narasi layanan e-Samsat Jatim tanpa gambar maupun tautan eksternal.
 
 ## Migrasi penuh dari Google Sheet
 
