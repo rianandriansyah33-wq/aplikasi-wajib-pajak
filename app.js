@@ -50,6 +50,7 @@ const controls = {
   statusFilter: document.querySelector("#statusFilter"),
   dateFilter: document.querySelector("#dateFilter"),
   dlFilter: document.querySelector("#dlFilter"),
+  listMonthFilter: document.querySelector("#listMonthFilter"),
   clearAllBtn: document.querySelector("#clearAllBtn"),
   homeBtn: document.querySelector("#homeBtn"),
   exportJsonBtn: document.querySelector("#exportJsonBtn"),
@@ -1130,6 +1131,34 @@ function updateDashboardMonthFilter() {
   controls.dashboardMonthFilter.value = values.includes(selectedMonth) ? selectedMonth : currentMonth;
 }
 
+function updateListMonthFilter() {
+  if (!controls.listMonthFilter) return;
+  const selectedMonth = controls.listMonthFilter.value || "all";
+  const monthValues = new Set();
+
+  records.forEach(function (record) {
+    const monthKey = getMonthKey(record.fieldVisitDate);
+    if (monthKey) monthValues.add(monthKey);
+  });
+
+  const values = Array.from(monthValues).sort().reverse();
+  controls.listMonthFilter.replaceChildren();
+
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "Semua periode DL";
+  controls.listMonthFilter.append(allOption);
+
+  values.forEach(function (monthKey) {
+    const option = document.createElement("option");
+    option.value = monthKey;
+    option.textContent = getMonthLabel(monthKey);
+    controls.listMonthFilter.append(option);
+  });
+
+  controls.listMonthFilter.value = values.includes(selectedMonth) ? selectedMonth : "all";
+}
+
 function getMonthContext(dateValue) {
   const selectedMonth = controls.dashboardMonthFilter ? controls.dashboardMonthFilter.value : "";
   const sourceDate = dateValue || (selectedMonth ? selectedMonth + "-01" : todayIso());
@@ -1973,6 +2002,7 @@ function getFilteredRecords() {
   const status = controls.statusFilter.value;
   const followUpCategory = controls.dateFilter.value;
   const dlFilter = controls.dlFilter ? controls.dlFilter.value : "all";
+  const listMonthFilter = controls.listMonthFilter ? controls.listMonthFilter.value : "all";
 
   return records
     .filter(function (record) {
@@ -1982,9 +2012,15 @@ function getFilteredRecords() {
       if (status !== "all" && getSiappPaymentFilterState(record) !== status) return false;
       if (!matchesFollowUpCategory(record, followUpCategory)) return false;
       if (!matchesDlFilter(record, dlFilter)) return false;
+      if (!matchesListMonthFilter(record, listMonthFilter)) return false;
       return true;
     })
     .sort(sortByDate);
+}
+
+function matchesListMonthFilter(record, monthKey) {
+  if (!monthKey || monthKey === "all") return true;
+  return getMonthKey(record.fieldVisitDate) === monthKey;
 }
 
 function matchesDlFilter(record, filterValue) {
@@ -2494,6 +2530,7 @@ async function checkRecordAgainstSiapp(recordId) {
 }
 
 function render() {
+  updateListMonthFilter();
   updateSummary();
   updateProductionSummary();
   tableBody.replaceChildren();
@@ -3101,9 +3138,11 @@ if (fields.taxPotential) {
   fields.taxPotential.addEventListener("blur", formatNominalInput);
 }
 
-[controls.searchInput, controls.statusFilter, controls.dateFilter, controls.dlFilter, controls.dashboardMonthFilter].forEach(function (control) {
+if (controls.searchInput) controls.searchInput.addEventListener("input", render);
+
+[controls.statusFilter, controls.dateFilter, controls.dlFilter, controls.listMonthFilter, controls.dashboardMonthFilter].forEach(function (control) {
   if (!control) return;
-  control.addEventListener("input", render);
+  control.addEventListener("change", render);
 });
 
 if (controls.mobileMenuBtn) {

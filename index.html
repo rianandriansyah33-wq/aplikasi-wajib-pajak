@@ -342,11 +342,11 @@
 
                 <div class="list-body" id="listBody">
                   <div class="row g-3 filters" aria-label="Filter data">
-                  <label class="col-12 col-lg-4">
+                  <label class="col-12 col-lg-3">
                     <span class="form-label">Cari</span>
                     <input class="form-control" id="searchInput" type="search" placeholder="Nama, nopol, jenis surat, WhatsApp, keterangan" />
                   </label>
-                  <label class="col-12 col-sm-6 col-lg-3">
+                  <label class="col-12 col-sm-6 col-lg-2">
                     <span class="form-label">Status SIAPP</span>
                     <select class="form-select" id="statusFilter">
                       <option value="all">Semua pembayaran</option>
@@ -378,6 +378,12 @@
                       <option value="dlPaidThisMonth">Sudah cair bulan berjalan</option>
                       <option value="dlUnpaidThisMonth">Belum cair setelah DL</option>
                       <option value="noDl">Belum ada tanggal DL</option>
+                    </select>
+                  </label>
+                  <label class="col-12 col-sm-6 col-lg-2">
+                    <span class="form-label">Periode Dinas Luar</span>
+                    <select class="form-select" id="listMonthFilter" aria-label="Periode Dinas Luar">
+                      <option value="all">Semua periode DL</option>
                     </select>
                   </label>
                 </div>
@@ -469,6 +475,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="config.js?v=20260910-1235"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="app.js?v=20260911-1630"></script>
+  <script src="app.js?v=20260915-1100"></script>
   </body>
 </html>
