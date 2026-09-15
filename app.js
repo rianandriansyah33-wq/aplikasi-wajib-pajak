@@ -19,6 +19,7 @@ const DENDA_RODA_4_PER_3_BULAN = 35000;
 const LETTER_SEQUENCE = ["SPOS", "NPP", "NTP"];
 const WHATSAPP_REMINDER_LIMIT = 10;
 const WHATSAPP_ECHANNEL_POSTER_PATH = "assets/e-channel-samsat-jatim.jpg";
+const WHATSAPP_ECHANNEL_SHARE_PATH = "e-channel.html?v=20260915-1825";
 const LETTER_OFFSETS = {
   SPOS: 15,
   NPP: 30,
@@ -1632,6 +1633,10 @@ function getWhatsappReminderSummary(record) {
 }
 
 function getEchannelPosterUrl() {
+  return new URL(WHATSAPP_ECHANNEL_SHARE_PATH, window.location.href).href;
+}
+
+function getEchannelPosterDownloadUrl() {
   return new URL(WHATSAPP_ECHANNEL_POSTER_PATH, window.location.href).href;
 }
 
@@ -1770,7 +1775,18 @@ function createWhatsappReminderSection(record) {
     poster.alt = "Informasi kanal pembayaran e-Samsat Jatim";
     poster.loading = "lazy";
     posterLink.append(poster);
-    section.append(posterLink);
+
+    const posterActions = document.createElement("div");
+    posterActions.className = "echannel-poster-actions";
+    const downloadLink = document.createElement("a");
+    downloadLink.className = "echannel-poster-download";
+    downloadLink.href = getEchannelPosterDownloadUrl();
+    downloadLink.download = "informasi-echannel-samsat-jatim.jpg";
+    downloadLink.textContent = "Unduh Poster";
+    downloadLink.title = "Unduh poster untuk dilampirkan sebagai gambar di WhatsApp";
+    posterActions.append(downloadLink);
+
+    section.append(posterLink, posterActions);
   }
 
   return section;

@@ -1349,6 +1349,33 @@ textarea.form-control {
   object-position: top;
 }
 
+.echannel-poster-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.echannel-poster-download {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0 .8rem;
+  border: 1px solid #b9d5f7;
+  border-radius: .55rem;
+  background: #eef5ff;
+  color: #2358b8;
+  font-size: .76rem;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.echannel-poster-download:hover,
+.echannel-poster-download:focus-visible {
+  border-color: #89b7ef;
+  background: #e2efff;
+  color: #174a9e;
+  outline: none;
+}
+
 .followup-plan {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
