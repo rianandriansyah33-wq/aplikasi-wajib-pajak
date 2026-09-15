@@ -33,18 +33,15 @@ function isExplicitlyPaid(record) {
   return !hasUnpaidMarker && hasPaidMarker;
 }
 
-function dateDistance(first, second) {
-  const firstDate = new Date(first + "T00:00:00");
-  const secondDate = new Date(second + "T00:00:00");
-  if (Number.isNaN(firstDate.getTime()) || Number.isNaN(secondDate.getTime())) return Number.POSITIVE_INFINITY;
-  return Math.abs(firstDate.getTime() - secondDate.getTime());
-}
-
-function selectProductionRecord(taxpayer, candidates) {
-  const referenceDate = taxpayer.field_visit_date || String(taxpayer.updated_at || "").slice(0, 10);
+function selectProductionRecord(candidates) {
   return candidates.slice().sort(function (first, second) {
-    const distanceDifference = dateDistance(first.recorded_date, referenceDate) - dateDistance(second.recorded_date, referenceDate);
-    if (distanceDifference) return distanceDifference;
+    const firstRecordedDate = String(first.recorded_date || "");
+    const secondRecordedDate = String(second.recorded_date || "");
+    if (firstRecordedDate !== secondRecordedDate) {
+      if (!firstRecordedDate) return 1;
+      if (!secondRecordedDate) return -1;
+      return secondRecordedDate.localeCompare(firstRecordedDate);
+    }
     const letterDifference = (letterRank[second.letter_type] || 0) - (letterRank[first.letter_type] || 0);
     if (letterDifference) return letterDifference;
     return String(second.updated_at || "").localeCompare(String(first.updated_at || ""));
@@ -115,7 +112,7 @@ async function main() {
   });
 
   const changes = taxpayers.map(function (taxpayer) {
-    const selected = selectProductionRecord(taxpayer, productionByPlate.get(taxpayer.plate_key) || []);
+    const selected = selectProductionRecord(productionByPlate.get(taxpayer.plate_key) || []);
     return { taxpayer: taxpayer, selected: selected, replacement: makeReplacement(taxpayer, selected) };
   }).filter(function (item) {
     return isDifferent(item.taxpayer, item.replacement);

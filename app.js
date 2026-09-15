@@ -1608,19 +1608,6 @@ function parseProductionPaste(text, scope) {
   });
 }
 
-function getProductionReferenceDate(value) {
-  if (value && typeof value === "object") {
-    const fieldVisitDate = toIsoDate(value.fieldVisitDate || value.dlDate || "");
-    if (fieldVisitDate) return fieldVisitDate;
-
-    if (value.updatedAt) {
-      const datePart = String(value.updatedAt).slice(0, 10);
-      if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return datePart;
-    }
-  }
-  return todayIso();
-}
-
 function getProductionRecordedDate(record) {
   return toIsoDate(record && record.recordedDate) || extractSiappRecordedDateFromSourceText(record && record.sourceText);
 }
@@ -1631,17 +1618,14 @@ function hasProductionPlate(value) {
   return Boolean(productionRecordsByPlate[plateKey] && productionRecordsByPlate[plateKey].length);
 }
 
-function getRecordedDateDistance(record, referenceDate) {
-  const recordedDate = getProductionRecordedDate(record);
-  if (!recordedDate) return Infinity;
-  const distance = daysBetween(referenceDate, recordedDate);
-  return distance === null ? Infinity : Math.abs(distance);
-}
-
-function sortProductionCandidates(first, second, referenceDate) {
-  const firstDistance = getRecordedDateDistance(first, referenceDate);
-  const secondDistance = getRecordedDateDistance(second, referenceDate);
-  if (firstDistance !== secondDistance) return firstDistance - secondDistance;
+function sortProductionCandidates(first, second) {
+  const firstRecordedDate = getProductionRecordedDate(first);
+  const secondRecordedDate = getProductionRecordedDate(second);
+  if (firstRecordedDate !== secondRecordedDate) {
+    if (!firstRecordedDate) return 1;
+    if (!secondRecordedDate) return -1;
+    return secondRecordedDate.localeCompare(firstRecordedDate);
+  }
   const firstRank = getLetterRank(first.letterType);
   const secondRank = getLetterRank(second.letterType);
   if (firstRank !== secondRank) return secondRank - firstRank;
@@ -1651,22 +1635,8 @@ function sortProductionCandidates(first, second, referenceDate) {
 function getProductionMatch(value) {
   const plateKey = typeof value === "string" ? getPlateKey(value) : getPlateKey(value && value.plateNumber);
   if (!plateKey) return null;
-  const referenceDate = getProductionReferenceDate(value);
   const candidates = (productionRecordsByPlate[plateKey] || []).slice();
-
-  const closeMatches = candidates
-    .filter(function (record) {
-      return getProductionRecordedDate(record);
-    })
-    .sort(function (first, second) {
-      return sortProductionCandidates(first, second, referenceDate);
-    });
-
-  if (closeMatches.length) return closeMatches[0];
-
-  return candidates.sort(function (a, b) {
-    return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
-  })[0] || null;
+  return candidates.sort(sortProductionCandidates)[0] || null;
 }
 
 function isRecordPaid(record) {
