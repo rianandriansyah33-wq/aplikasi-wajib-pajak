@@ -14,11 +14,15 @@ const controls = {
   paidRate: document.querySelector("#paidRate"),
   peakPaymentDay: document.querySelector("#peakPaymentDay"),
   peakPaymentDetail: document.querySelector("#peakPaymentDetail"),
-  dailyPaymentChart: document.querySelector("#dailyPaymentChart")
+  dailyPaymentChart: document.querySelector("#dailyPaymentChart"),
+  averagePaymentDuration: document.querySelector("#averagePaymentDuration"),
+  paymentDurationDetail: document.querySelector("#paymentDurationDetail"),
+  paymentDurationChart: document.querySelector("#paymentDurationChart")
 };
 
 let productionRecords = [];
 let dailyPaymentChart = null;
+let paymentDurationChart = null;
 
 function setStatus(message, state = "neutral") {
   if (!controls.status) return;
@@ -150,6 +154,33 @@ function buildDailyPaymentPattern(vehicles, selectedPeriod) {
   return days;
 }
 
+function buildPaymentDurations(vehicles) {
+  const buckets = [
+    { label: "0-7 hari", count: 0, min: 0, max: 7 },
+    { label: "8-14 hari", count: 0, min: 8, max: 14 },
+    { label: "15-30 hari", count: 0, min: 15, max: 30 },
+    { label: "31-60 hari", count: 0, min: 31, max: 60 },
+    { label: "61-90 hari", count: 0, min: 61, max: 90 },
+    { label: ">90 hari", count: 0, min: 91, max: Infinity }
+  ];
+  const durations = [];
+
+  vehicles.filter((item) => item.isPaid).forEach((item) => {
+    const recordedDate = getIsoDate(item.record.recorded_date);
+    const paidDate = getIsoDate(item.record.paid_date);
+    if (!recordedDate || !paidDate) return;
+
+    const duration = Math.floor((new Date(`${paidDate}T00:00:00`).getTime() - new Date(`${recordedDate}T00:00:00`).getTime()) / 86400000);
+    if (duration < 0) return;
+
+    durations.push(duration);
+    const bucket = buckets.find((itemBucket) => duration >= itemBucket.min && duration <= itemBucket.max);
+    if (bucket) bucket.count += 1;
+  });
+
+  return { buckets, durations };
+}
+
 function renderMetrics(vehicles, dailyPayments) {
   const paidCount = vehicles.filter((item) => item.isPaid).length;
   const unpaidCount = vehicles.length - paidCount;
@@ -204,12 +235,69 @@ function renderDailyPaymentChart(dailyPayments) {
   });
 }
 
+function renderPaymentDuration(durationData) {
+  const { buckets, durations } = durationData;
+  const sortedDurations = [...durations].sort((left, right) => left - right);
+  const average = sortedDurations.length ? sortedDurations.reduce((total, value) => total + value, 0) / sortedDurations.length : 0;
+  const middle = Math.floor(sortedDurations.length / 2);
+  const median = sortedDurations.length % 2 ? sortedDurations[middle] : (sortedDurations[middle - 1] + sortedDurations[middle]) / 2;
+  const withinThirtyDays = sortedDurations.filter((value) => value <= 30).length;
+  const withinThirtyRate = sortedDurations.length ? (withinThirtyDays / sortedDurations.length) * 100 : 0;
+
+  if (sortedDurations.length) {
+    setMetric(controls.averagePaymentDuration, `${average.toLocaleString("id-ID", { maximumFractionDigits: 1 })} hari rata-rata`);
+    setMetric(controls.paymentDurationDetail, `Median ${median.toLocaleString("id-ID", { maximumFractionDigits: 1 })} hari. ${withinThirtyRate.toLocaleString("id-ID", { maximumFractionDigits: 1 })}% lunas dalam 30 hari.`);
+  } else {
+    setMetric(controls.averagePaymentDuration, "Belum ada data");
+    setMetric(controls.paymentDurationDetail, "Belum ada nopol dengan Tgl Rekam dan Tgl Bayar yang lengkap.");
+  }
+
+  if (!controls.paymentDurationChart || !window.Chart) return;
+  if (paymentDurationChart) paymentDurationChart.destroy();
+
+  paymentDurationChart = new window.Chart(controls.paymentDurationChart, {
+    type: "bar",
+    data: {
+      labels: buckets.map((bucket) => bucket.label),
+      datasets: [{
+        label: "Kendaraan lunas",
+        data: buckets.map((bucket) => bucket.count),
+        backgroundColor: ["#158f68", "#0b8078", "#d19219", "#dd8f35", "#c8513a", "#b83336"],
+        borderRadius: 5,
+        maxBarThickness: 68
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label(context) { return `${formatNumber(context.raw)} kendaraan lunas`; } } }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          title: { display: true, text: "Jumlah kendaraan" },
+          grid: { color: "#e9eef5" }
+        },
+        x: {
+          title: { display: true, text: "Lama proses pembayaran" },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+}
+
 function renderAnalysis() {
   const selectedPeriod = controls.recordedPeriodFilter.value;
   const vehicles = createMonthlyVehicles(productionRecords, selectedPeriod);
   const dailyPayments = buildDailyPaymentPattern(vehicles, selectedPeriod);
+  const paymentDurations = buildPaymentDurations(vehicles);
   renderMetrics(vehicles, dailyPayments);
   renderDailyPaymentChart(dailyPayments);
+  renderPaymentDuration(paymentDurations);
 }
 
 function setSource() {

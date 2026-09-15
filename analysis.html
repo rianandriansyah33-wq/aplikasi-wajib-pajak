@@ -82,6 +82,21 @@
           <p class="chart-description">Grafik menampilkan nopol yang terekam pada bulan terpilih dan memiliki tanggal bayar pada bulan yang sama.</p>
           <div class="chart-wrap"><canvas id="dailyPaymentChart"></canvas></div>
         </section>
+
+        <section class="chart-panel payment-chart-panel duration-chart-panel" aria-labelledby="paymentDurationTitle">
+          <div class="chart-heading">
+            <div>
+              <p class="section-eyebrow">DURASI PELUNASAN</p>
+              <h2 id="paymentDurationTitle">Lama Proses Pembayaran</h2>
+            </div>
+            <div class="chart-summary">
+              <strong id="averagePaymentDuration">-</strong>
+              <span id="paymentDurationDetail">Menunggu data durasi pembayaran</span>
+            </div>
+          </div>
+          <p class="chart-description">Setiap nopol dihitung dari Tgl Rekam sampai Tgl Bayar. Distribusi membantu melihat kendaraan yang selesai cepat maupun yang membutuhkan waktu lebih lama.</p>
+          <div class="chart-wrap"><canvas id="paymentDurationChart"></canvas></div>
+        </section>
       </main>
     </div>
 
