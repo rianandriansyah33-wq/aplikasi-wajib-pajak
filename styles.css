@@ -990,7 +990,8 @@ textarea.form-control {
 }
 
 .card-production,
-.card-dl-info {
+.card-dl-info,
+.card-reminder {
   display: inline-flex;
   align-items: center;
   width: fit-content;
@@ -1029,6 +1030,21 @@ textarea.form-control {
 .card-dl-info.is-empty {
   background: #eef2f6;
   color: #64748b;
+}
+
+.card-reminder {
+  background: #f1f5f9;
+  color: #526071;
+}
+
+.card-reminder.has-reminder {
+  background: #e8f5ef;
+  color: #16734b;
+}
+
+.card-reminder.is-maximum {
+  background: var(--app-warning-soft);
+  color: var(--app-warning);
 }
 
 .siapp-check-btn {
@@ -1254,7 +1270,7 @@ textarea.form-control {
 
 .detail-actions {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr;
+  grid-template-columns: 1.25fr 1.1fr .8fr .8fr;
   gap: .65rem;
 }
 
@@ -1262,6 +1278,75 @@ textarea.form-control {
   cursor: not-allowed;
   opacity: .5;
   pointer-events: none;
+}
+
+.whatsapp-reminder-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .65rem;
+}
+
+.whatsapp-reminder-head h3 {
+  margin: 0;
+}
+
+.whatsapp-reminder-count {
+  flex: 0 0 auto;
+  min-height: 1.65rem;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 .55rem;
+  border-radius: .45rem;
+  background: #f1f5f9;
+  color: #526071;
+  font-size: .7rem;
+  font-weight: 900;
+}
+
+.whatsapp-reminder-count.has-reminder {
+  background: #e8f5ef;
+  color: #16734b;
+}
+
+.whatsapp-reminder-count.is-maximum {
+  background: var(--app-warning-soft);
+  color: var(--app-warning);
+}
+
+.whatsapp-template-preview {
+  margin: 0;
+  padding: .7rem;
+  border: 1px solid #dfe8f3;
+  border-radius: .65rem;
+  background: #fff;
+  color: var(--app-text);
+  font-size: .82rem;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
+.whatsapp-reminder-note {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: .74rem;
+  line-height: 1.4;
+}
+
+.echannel-poster-link {
+  display: block;
+  overflow: hidden;
+  border: 1px solid #dfe8f3;
+  border-radius: .65rem;
+  background: #fff;
+}
+
+.echannel-poster {
+  display: block;
+  width: 100%;
+  max-height: 16rem;
+  object-fit: cover;
+  object-position: top;
 }
 
 .followup-plan {

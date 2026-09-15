@@ -1,4 +1,5 @@
 const STORAGE_KEY = "wajibPajakFollowUpRecords";
+const WHATSAPP_REMINDERS_STORAGE_KEY = "wajibPajakWhatsappReminders";
 const PRODUCTION_STORAGE_KEY = "wajibPajakProductionRecords";
 const PRODUCTION_SYNC_META_KEY = "wajibPajakProductionLastSyncAt";
 const PRODUCTION_SUMMARY_STORAGE_KEY = "wajibPajakProductionSummary";
@@ -16,6 +17,8 @@ const DATABASE_JSONP_MAX_URL_LENGTH = 14000;
 const JASA_RAHARJA_RODA_4 = 143000;
 const DENDA_RODA_4_PER_3_BULAN = 35000;
 const LETTER_SEQUENCE = ["SPOS", "NPP", "NTP"];
+const WHATSAPP_REMINDER_LIMIT = 10;
+const WHATSAPP_ECHANNEL_POSTER_PATH = "assets/e-channel-samsat-jatim.jpg";
 const LETTER_OFFSETS = {
   SPOS: 15,
   NPP: 30,
@@ -118,6 +121,7 @@ const summary = {
 };
 
 let records = loadRecords().map(normalizeRecord);
+let whatsappReminders = loadWhatsappReminders().map(normalizeWhatsappReminder);
 let productionRecords = loadProductionRecords().map(normalizeProductionRecord);
 let productionRecordsByPlate = createProductionIndex(productionRecords);
 let productionLastSyncAt = loadProductionLastSyncAt();
@@ -127,12 +131,15 @@ let pendingRemoteDeletes = loadPendingRemoteDeletes();
 let isRemoteRefreshing = false;
 let isProductionRefreshing = false;
 let isProductionSummaryRefreshing = false;
+let isWhatsappReminderRefreshing = false;
+let isWhatsappReminderSaving = false;
 let isPendingRemoteSyncing = false;
 let remoteMutationCount = 0;
 let remoteAutoRefreshStarted = false;
 let lastRemoteWriteAt = 0;
 let lastProductionRefreshAt = 0;
 let lastProductionSummaryFallbackAt = 0;
+let lastWhatsappReminderRefreshAt = 0;
 let remoteRetryAttempt = 0;
 let remoteRetryTimer = null;
 let remoteFailureCount = 0;
@@ -213,6 +220,18 @@ function loadRecords() {
 
 function saveRecords() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+}
+
+function loadWhatsappReminders() {
+  try {
+    return JSON.parse(localStorage.getItem(WHATSAPP_REMINDERS_STORAGE_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveWhatsappReminders() {
+  localStorage.setItem(WHATSAPP_REMINDERS_STORAGE_KEY, JSON.stringify(whatsappReminders));
 }
 
 function loadProductionRecords() {
@@ -437,6 +456,29 @@ function fromSupabaseTaxpayerRow(row) {
   });
 }
 
+function toSupabaseWhatsappReminderRow(reminder) {
+  const item = normalizeWhatsappReminder(reminder);
+  return {
+    id: item.id,
+    taxpayer_id: item.taxpayerId || null,
+    plate_key: item.plateKey,
+    reminder_number: item.reminderNumber,
+    template_version: item.templateVersion,
+    sent_at: item.sentAt
+  };
+}
+
+function fromSupabaseWhatsappReminderRow(row) {
+  return normalizeWhatsappReminder({
+    id: row.id,
+    taxpayerId: row.taxpayer_id,
+    plateKey: row.plate_key,
+    reminderNumber: row.reminder_number,
+    templateVersion: row.template_version,
+    sentAt: row.sent_at
+  });
+}
+
 function toSupabaseProductionRow(record) {
   const item = normalizeProductionRecord(record);
   return {
@@ -513,9 +555,25 @@ async function listSupabaseRows(table, mapper) {
   return allRows.map(mapper);
 }
 
+async function listSupabaseWhatsappReminders() {
+  const allRows = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const rows = await requestSupabaseRest("whatsapp_reminders?select=*&order=sent_at.asc", {
+      headers: { Range: from + "-" + (from + pageSize - 1) }
+    });
+    allRows.push.apply(allRows, rows);
+    if (rows.length < pageSize) break;
+  }
+  return allRows.map(fromSupabaseWhatsappReminderRow);
+}
+
 async function requestSupabaseDatabase(action, payload) {
   if (action === "list") {
     return { ok: true, records: await listSupabaseRows("taxpayers", fromSupabaseTaxpayerRow) };
+  }
+  if (action === "listWhatsappReminders") {
+    return { ok: true, reminders: await listSupabaseWhatsappReminders() };
   }
   if (action === "listProduction") {
     return { ok: true, productionRecords: await listSupabaseRows("production_records", fromSupabaseProductionRow) };
@@ -542,6 +600,18 @@ async function requestSupabaseDatabase(action, payload) {
       body: JSON.stringify(rows)
     });
     return { ok: true, records: saved.map(fromSupabaseTaxpayerRow) };
+  }
+  if (action === "upsertWhatsappReminders") {
+    const rows = (payload.reminders || []).map(toSupabaseWhatsappReminderRow).filter(function (item) {
+      return item.plate_key;
+    });
+    if (!rows.length) return { ok: true, reminders: [] };
+    const saved = await requestSupabaseRest("whatsapp_reminders?on_conflict=id", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify(rows)
+    });
+    return { ok: true, reminders: saved.map(fromSupabaseWhatsappReminderRow) };
   }
   if (action === "upsertProduction") {
     const rows = (payload.productionRecords || []).map(toSupabaseProductionRow);
@@ -601,6 +671,60 @@ function requestDatabaseJsonp(action, payload) {
 async function fetchRemoteRecords() {
   const result = await requestDatabase("list");
   return Array.isArray(result.records) ? result.records.map(normalizeRecord) : [];
+}
+
+async function fetchRemoteWhatsappReminders() {
+  if (!isSupabaseDatabase()) return [];
+  const result = await requestDatabase("listWhatsappReminders");
+  return Array.isArray(result.reminders) ? result.reminders.map(normalizeWhatsappReminder) : [];
+}
+
+async function saveRemoteWhatsappReminders(items) {
+  if (!isSupabaseDatabase() || !items.length) return [];
+  const result = await requestDatabase("upsertWhatsappReminders", { reminders: items });
+  return Array.isArray(result.reminders) ? result.reminders.map(normalizeWhatsappReminder) : [];
+}
+
+function mergeWhatsappReminders(remoteReminders) {
+  const remindersById = new Map();
+  (remoteReminders || []).forEach(function (reminder) {
+    const normalized = normalizeWhatsappReminder(reminder);
+    remindersById.set(normalized.id, normalized);
+  });
+  whatsappReminders.forEach(function (reminder) {
+    const normalized = normalizeWhatsappReminder(reminder);
+    if (!remindersById.has(normalized.id)) remindersById.set(normalized.id, normalized);
+  });
+  return Array.from(remindersById.values()).sort(function (first, second) {
+    return String(first.sentAt || "").localeCompare(String(second.sentAt || "")) || String(first.id || "").localeCompare(String(second.id || ""));
+  });
+}
+
+async function refreshWhatsappReminders(options) {
+  const settings = options || {};
+  if (!isSupabaseDatabase() || isWhatsappReminderRefreshing) return;
+  if (!settings.force && Date.now() - lastWhatsappReminderRefreshAt < 60000) return;
+
+  isWhatsappReminderRefreshing = true;
+  try {
+    const remoteReminders = await fetchRemoteWhatsappReminders();
+    const remoteIds = new Set(remoteReminders.map(function (reminder) { return reminder.id; }));
+    const localOnly = whatsappReminders.filter(function (reminder) {
+      return !remoteIds.has(reminder.id);
+    });
+    if (localOnly.length) await saveRemoteWhatsappReminders(localOnly);
+
+    whatsappReminders = mergeWhatsappReminders(remoteReminders);
+    saveWhatsappReminders();
+    lastWhatsappReminderRefreshAt = Date.now();
+    render();
+  } catch (error) {
+    console.warn("Riwayat reminder WhatsApp belum dapat disinkronkan.", error);
+    lastWhatsappReminderRefreshAt = Date.now();
+    if (!settings.silent) showToast("Riwayat reminder tersimpan lokal. Jalankan pembaruan schema Supabase untuk sinkron lintas perangkat.");
+  } finally {
+    isWhatsappReminderRefreshing = false;
+  }
 }
 
 async function saveRemoteRecords(items) {
@@ -998,15 +1122,22 @@ function startRemoteAutoRefresh() {
   remoteAutoRefreshStarted = true;
 
   window.setInterval(function () {
-    if (!document.hidden) refreshRemoteRecords({ silent: true });
+    if (!document.hidden) {
+      refreshRemoteRecords({ silent: true });
+      refreshWhatsappReminders({ silent: true });
+    }
   }, REMOTE_REFRESH_INTERVAL_MS);
 
   window.addEventListener("focus", function () {
     refreshRemoteRecords({ silent: true });
+    refreshWhatsappReminders({ silent: true });
   });
 
   document.addEventListener("visibilitychange", function () {
-    if (!document.hidden) refreshRemoteRecords({ silent: true });
+    if (!document.hidden) {
+      refreshRemoteRecords({ silent: true });
+      refreshWhatsappReminders({ silent: true });
+    }
   });
 }
 
@@ -1031,6 +1162,7 @@ async function initializeRemoteDatabase() {
       await migrateLocalProductionRecordsToRemote();
       await refreshRemoteProductionRecords({ force: true, silent: true });
       refreshRemoteProductionSummary({ force: true, silent: true });
+      await refreshWhatsappReminders({ force: true, silent: true });
       return;
     }
 
@@ -1048,6 +1180,7 @@ async function initializeRemoteDatabase() {
     await migrateLocalProductionRecordsToRemote();
     await refreshRemoteProductionRecords({ force: true, silent: true });
     refreshRemoteProductionSummary({ force: true, silent: true });
+    await refreshWhatsappReminders({ force: true, silent: true });
   } catch (error) {
     console.error(error);
     render();
@@ -1469,10 +1602,60 @@ function getJakartaGreeting() {
   return "Selamat Malam";
 }
 
+function getPlateKey(value) {
+  return formatPlate(value).replace(/\s/g, "");
+}
+
+function getWhatsappReminderHistory(record) {
+  const plateKey = getPlateKey(record && record.plateNumber);
+  if (!plateKey) return [];
+  return whatsappReminders
+    .filter(function (item) {
+      return item.plateKey === plateKey;
+    })
+    .sort(function (first, second) {
+      return String(first.sentAt || "").localeCompare(String(second.sentAt || "")) || String(first.id || "").localeCompare(String(second.id || ""));
+    });
+}
+
+function getWhatsappReminderSummary(record) {
+  const history = getWhatsappReminderHistory(record);
+  const count = history.length;
+  const lastReminder = history[count - 1] || null;
+  return {
+    count: count,
+    nextNumber: Math.min(count + 1, WHATSAPP_REMINDER_LIMIT),
+    isMaximum: count >= WHATSAPP_REMINDER_LIMIT,
+    lastSentAt: lastReminder ? lastReminder.sentAt : "",
+    label: count ? "WA " + count + "/" + WHATSAPP_REMINDER_LIMIT : "WA belum direminder"
+  };
+}
+
+function getEchannelPosterUrl() {
+  return new URL(WHATSAPP_ECHANNEL_POSTER_PATH, window.location.href).href;
+}
+
 function getWhatsappMessage(record) {
+  const reminder = getWhatsappReminderSummary(record);
+  const reminderNumber = reminder.nextNumber;
   const name = record.ownerName ? "Bapak/Ibu " + record.ownerName : "Bapak/Ibu";
-  const plate = record.plateNumber ? " dengan nomor polisi " + record.plateNumber : "";
-  return getJakartaGreeting() + ", apa benar ini dengan " + name + "? kami dari SAMSAT Manyar mau mengingatkan terkait pembayaran pajak tahunan kendaraannya" + plate + ".";
+  const plate = record.plateNumber || "kendaraan yang tercatat";
+  const greeting = getJakartaGreeting() + ", " + name + ".";
+  const paymentInfo = "\n\nInformasi kanal pembayaran e-Samsat Jatim: " + getEchannelPosterUrl();
+  const paidNote = " Bila pembayaran sudah dilakukan, mohon abaikan pesan ini.";
+  const templates = {
+    1: greeting + "\n\nPerkenalkan, kami dari SAMSAT Manyar. Mohon konfirmasi, apakah Bapak/Ibu merupakan pemilik atau pengguna kendaraan nomor polisi *" + plate + "*? Pesan ini kami sampaikan untuk memastikan informasi pajak kendaraan diterima oleh pihak yang tepat. Terima kasih.",
+    2: greeting + "\n\nKami mengingatkan dengan hormat terkait pembayaran pajak tahunan kendaraan *" + plate + "*. Apabila belum sempat melakukan pembayaran, tersedia beberapa pilihan kanal e-Samsat Jatim yang dapat digunakan." + paidNote + paymentInfo,
+    3: greeting + "\n\nKami menyampaikan pengingat lanjutan untuk pajak kendaraan *" + plate + "*. Pembayaran dapat dilakukan melalui kanal e-Samsat sesuai pilihan yang paling nyaman." + paidNote + paymentInfo,
+    4: greeting + "\n\nApabila Bapak/Ibu memerlukan waktu untuk menyelesaikan pembayaran pajak kendaraan *" + plate + "*, kami siap membantu memberikan informasi kanal pembayaran yang tersedia." + paidNote + paymentInfo,
+    5: greeting + "\n\nKami mohon perhatian Bapak/Ibu terhadap status pajak kendaraan *" + plate + "*. Untuk kemudahan, pembayaran dapat dilakukan melalui layanan e-Samsat tanpa perlu mengantre." + paidNote + paymentInfo,
+    6: greeting + "\n\nKami ingin membantu agar pembayaran pajak kendaraan *" + plate + "* dapat dijadwalkan sesuai waktu yang nyaman bagi Bapak/Ibu. Informasi kanal pembayaran tersedia pada tautan berikut." + paidNote + paymentInfo,
+    7: greeting + "\n\nKami kembali mengingatkan secara sopan mengenai pajak kendaraan *" + plate + "*. Mohon berkenan melakukan pengecekan; apabila ada kendala, Bapak/Ibu dapat menggunakan salah satu kanal e-Samsat." + paidNote + paymentInfo,
+    8: greeting + "\n\nSebagai tindak lanjut layanan, kami menyampaikan pengingat pajak kendaraan *" + plate + "*. Pembayaran melalui e-Samsat dapat menjadi pilihan praktis sesuai kebutuhan Bapak/Ibu." + paidNote + paymentInfo,
+    9: greeting + "\n\nKami mohon konfirmasi kembali terkait pembayaran pajak kendaraan *" + plate + "*. Apabila belum terbayarkan, berikut informasi kanal pembayaran yang dapat dipertimbangkan." + paidNote + paymentInfo,
+    10: greeting + "\n\nIni adalah pengingat ke-10 terkait pajak kendaraan *" + plate + "*. Kami sangat menghargai perhatian Bapak/Ibu untuk melakukan pengecekan dan, bila diperlukan, menggunakan kanal pembayaran e-Samsat yang tersedia." + paidNote + paymentInfo
+  };
+  return templates[reminderNumber] || templates[WHATSAPP_REMINDER_LIMIT];
 }
 
 function getWhatsappUrl(record) {
@@ -1481,8 +1664,116 @@ function getWhatsappUrl(record) {
   return "https://wa.me/" + digits + "?text=" + encodeURIComponent(getWhatsappMessage(record));
 }
 
-function getPlateKey(value) {
-  return formatPlate(value).replace(/\s/g, "");
+function getWhatsappReminderStateText(reminder) {
+  if (!reminder.count) return "Belum ada reminder WhatsApp tercatat.";
+  const lastSent = reminder.lastSentAt ? " Terakhir ditandai terkirim " + formatDateTime(reminder.lastSentAt) + " WIB." : "";
+  if (reminder.isMaximum) return "Sudah mencapai reminder ke-" + WHATSAPP_REMINDER_LIMIT + "." + lastSent;
+  return "Reminder berikutnya menggunakan template ke-" + reminder.nextNumber + "." + lastSent;
+}
+
+async function markWhatsappReminderSent(record) {
+  if (isWhatsappReminderSaving) return;
+  if (isRecordPaid(record)) {
+    showToast("Reminder tidak dibuat karena status SIAPP sudah lunas.");
+    return;
+  }
+  if (!record.phone) {
+    showToast("No WhatsApp belum diisi.");
+    return;
+  }
+
+  const summary = getWhatsappReminderSummary(record);
+  if (summary.isMaximum) {
+    showToast("Reminder WhatsApp sudah mencapai batas 10 kali.");
+    return;
+  }
+
+  const reminderNumber = summary.nextNumber;
+  const approved = confirm("Pastikan pesan WhatsApp reminder ke-" + reminderNumber + " sudah dikirim. Tandai sebagai terkirim?");
+  if (!approved) return;
+
+  const reminder = normalizeWhatsappReminder({
+    id: "wa-" + createId(),
+    taxpayerId: record.id,
+    plateKey: getPlateKey(record.plateNumber),
+    reminderNumber: reminderNumber,
+    templateVersion: reminderNumber,
+    sentAt: new Date().toISOString()
+  });
+
+  isWhatsappReminderSaving = true;
+  whatsappReminders.push(reminder);
+  saveWhatsappReminders();
+  render();
+
+  try {
+    if (isSupabaseDatabase()) {
+      const saved = await saveRemoteWhatsappReminders([reminder]);
+      if (saved.length) {
+        whatsappReminders = mergeWhatsappReminders(saved);
+        saveWhatsappReminders();
+      }
+      markRemoteOnline("Online auto-sync");
+      showToast("Reminder WA ke-" + reminderNumber + " tercatat di database.", "connection-success");
+    } else {
+      showToast("Reminder WA ke-" + reminderNumber + " tercatat.", "connection-success");
+    }
+  } catch (error) {
+    console.warn("Reminder WhatsApp hanya tersimpan lokal.", error);
+    showToast("Reminder tercatat lokal. Jalankan pembaruan schema Supabase agar tersimpan online.", "connection-error");
+  } finally {
+    isWhatsappReminderSaving = false;
+    render();
+  }
+}
+
+function createWhatsappReminderSection(record) {
+  const reminder = getWhatsappReminderSummary(record);
+  const paid = isRecordPaid(record);
+  const section = document.createElement("section");
+  section.className = "detail-section whatsapp-reminder-section";
+
+  const heading = document.createElement("div");
+  heading.className = "whatsapp-reminder-head";
+  const title = document.createElement("h3");
+  title.textContent = "Reminder WhatsApp";
+  const count = document.createElement("span");
+  count.className = "whatsapp-reminder-count";
+  count.textContent = reminder.count + "/" + WHATSAPP_REMINDER_LIMIT + " terkirim";
+  count.classList.toggle("has-reminder", reminder.count > 0);
+  count.classList.toggle("is-maximum", reminder.isMaximum);
+  heading.append(title, count);
+
+  const templatePreview = document.createElement("p");
+  templatePreview.className = "whatsapp-template-preview";
+  templatePreview.textContent = paid
+    ? "Wajib pajak sudah lunas di SIAPP. Reminder WhatsApp tidak perlu dikirim."
+    : getWhatsappMessage(record);
+
+  const state = document.createElement("p");
+  state.className = "whatsapp-reminder-note";
+  state.textContent = paid ? "Riwayat reminder tetap tersimpan." : getWhatsappReminderStateText(reminder);
+
+  section.append(heading, templatePreview, state);
+
+  if (!paid && reminder.nextNumber >= 2) {
+    const posterLink = document.createElement("a");
+    posterLink.className = "echannel-poster-link";
+    posterLink.href = getEchannelPosterUrl();
+    posterLink.target = "_blank";
+    posterLink.rel = "noopener";
+    posterLink.title = "Buka poster e-channel Samsat Jatim";
+
+    const poster = document.createElement("img");
+    poster.className = "echannel-poster";
+    poster.src = WHATSAPP_ECHANNEL_POSTER_PATH;
+    poster.alt = "Informasi kanal pembayaran e-Samsat Jatim";
+    poster.loading = "lazy";
+    posterLink.append(poster);
+    section.append(posterLink);
+  }
+
+  return section;
 }
 
 function extractPlateCandidates(value) {
@@ -1917,6 +2208,19 @@ function normalizeRecord(record) {
     fieldVisitDate: toIsoDate(record.fieldVisitDate || record.dlDate || record.dinasLuarDate || ""),
     fieldVisitNote: normalizeUpperText(record.fieldVisitNote || record.dlNote || record.dinasLuarNote || record.keterangan || record.note || ""),
     updatedAt: record.updatedAt || new Date().toISOString()
+  };
+}
+
+function normalizeWhatsappReminder(reminder) {
+  const source = reminder || {};
+  const reminderNumber = Math.max(1, Math.min(WHATSAPP_REMINDER_LIMIT, Number(source.reminderNumber || source.reminder_number || 1)));
+  return {
+    id: String(source.id || "wa-" + createId()),
+    taxpayerId: String(source.taxpayerId || source.taxpayer_id || ""),
+    plateKey: getPlateKey(source.plateKey || source.plate_key || source.plateNumber || source.plate_number || ""),
+    reminderNumber: reminderNumber,
+    templateVersion: Math.max(1, Math.min(WHATSAPP_REMINDER_LIMIT, Number(source.templateVersion || source.template_version || reminderNumber))),
+    sentAt: String(source.sentAt || source.sent_at || new Date().toISOString())
   };
 }
 
@@ -2363,6 +2667,7 @@ function renderRecordDetail(record) {
   const paid = isRecordPaid(record);
   const priority = getCardPriorityInfo(record);
   const nextFollowUp = getNextFollowUpSummary(record);
+  const whatsappReminder = getWhatsappReminderSummary(record);
   const taxInfo = describeDate(record.taxValidDate, paid ? "Lunas" : "", true);
 
   controls.detailTitle.textContent = record.ownerName || "Nama belum diisi";
@@ -2398,6 +2703,7 @@ function renderRecordDetail(record) {
     createDetailItem("No Polisi", record.plateNumber || "Belum diisi"),
     createDetailItem("Nama Wajib Pajak", record.ownerName || "Belum diisi"),
     createDetailItem("No Whatsapp", record.phone || "Belum diisi"),
+    createDetailItem("Reminder WhatsApp", whatsappReminder.count + " dari " + WHATSAPP_REMINDER_LIMIT + " kali"),
     createDetailItem("Tgl Dinas Luar", record.fieldVisitDate ? formatDate(record.fieldVisitDate) : "Belum diisi"),
     createDetailItem("Keterangan DL", record.fieldVisitNote || "Belum diisi"),
     createDetailItem("Masa Pajak", formatDate(record.taxValidDate) + " - " + taxInfo.text),
@@ -2413,21 +2719,33 @@ function renderRecordDetail(record) {
   renderFollowUpPlan(followUpPlan, record);
   followUpSection.append(followUpTitle, followUpPlan);
 
+  const whatsappReminderSection = createWhatsappReminderSection(record);
+
   const actions = document.createElement("div");
   actions.className = "detail-actions";
 
   const whatsappUrl = getWhatsappUrl(record);
   const whatsappButton = document.createElement("a");
   whatsappButton.className = "primary-button detail-whatsapp";
-  whatsappButton.textContent = "WhatsApp";
+  whatsappButton.textContent = paid ? "Sudah Lunas" : "Buka WA #" + whatsappReminder.nextNumber;
   whatsappButton.target = "_blank";
   whatsappButton.rel = "noopener";
-  if (whatsappUrl) {
+  if (whatsappUrl && !paid) {
     whatsappButton.href = whatsappUrl;
   } else {
     whatsappButton.classList.add("is-disabled");
     whatsappButton.setAttribute("aria-disabled", "true");
   }
+
+  const reminderButton = document.createElement("button");
+  reminderButton.className = "secondary-button";
+  reminderButton.type = "button";
+  reminderButton.textContent = whatsappReminder.isMaximum ? "Maks. 10x" : "Tandai #" + whatsappReminder.nextNumber;
+  reminderButton.title = "Tandai reminder WhatsApp sebagai terkirim";
+  reminderButton.disabled = paid || whatsappReminder.isMaximum || !record.phone;
+  reminderButton.addEventListener("click", function () {
+    markWhatsappReminderSent(record);
+  });
 
   const editButton = document.createElement("button");
   editButton.className = "secondary-button";
@@ -2447,8 +2765,8 @@ function renderRecordDetail(record) {
     deleteRecord(record.id);
   });
 
-  actions.append(whatsappButton, editButton, deleteButton);
-  controls.detailContent.append(summaryBlock, detailGrid, followUpSection, actions);
+  actions.append(whatsappButton, reminderButton, editButton, deleteButton);
+  controls.detailContent.append(summaryBlock, detailGrid, followUpSection, whatsappReminderSection, actions);
 }
 
 function openRecordDetail(id) {
@@ -2548,6 +2866,16 @@ function render() {
         ? "DL " + formatDate(record.fieldVisitDate) + (record.fieldVisitNote ? " - " + record.fieldVisitNote : "")
         : "Belum DL";
       dlInfo.classList.toggle("is-empty", !record.fieldVisitDate);
+    }
+    const reminderElement = card.querySelector(".card-reminder");
+    if (reminderElement) {
+      const reminder = getWhatsappReminderSummary(record);
+      reminderElement.textContent = "WA " + reminder.count + "/" + WHATSAPP_REMINDER_LIMIT;
+      reminderElement.title = reminder.count
+        ? "Reminder terakhir ditandai terkirim " + formatDateTime(reminder.lastSentAt) + " WIB"
+        : "Belum ada reminder WhatsApp tercatat";
+      reminderElement.classList.toggle("has-reminder", reminder.count > 0);
+      reminderElement.classList.toggle("is-maximum", reminder.isMaximum);
     }
     const productionElement = card.querySelector(".card-production");
     const productionMatch = getProductionMatch(record);

@@ -27,6 +27,12 @@ Sebelum membuka aplikasi pertama kali:
 
 Data laptop dan HP akan memakai database Supabase yang sama. Aplikasi tidak lagi memerlukan Google Sheet atau Apps Script.
 
+## Reminder WhatsApp
+
+Sebelum memakai fitur reminder pertama kali, jalankan [supabase-reminder-migration.sql](supabase-reminder-migration.sql) melalui Supabase `SQL Editor`. Riwayat reminder disimpan per nopol dan disinkronkan antar perangkat.
+
+Tombol WhatsApp membuka template reminder berikutnya, sedangkan tombol `Tandai #...` dipakai setelah pesan benar-benar dikirim. Penandaan sengaja dipisah agar membuka WhatsApp tanpa mengirim pesan tidak menaikkan hitungan reminder. Template ke-2 sampai ke-10 menyertakan tautan poster e-channel; WhatsApp dari browser tidak dapat melampirkan file gambar secara otomatis.
+
 ## Migrasi penuh dari Google Sheet
 
 Sebelum menghapus Google Sheet, ekspor kedua tab berikut satu per satu dari Google Sheet: pilih tab, lalu `File` > `Download` > `Comma-separated values (.csv, current sheet)`.

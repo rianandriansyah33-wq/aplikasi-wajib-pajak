@@ -40,9 +40,19 @@ create table if not exists public.production_records (
   unique (letter_type, year, month, plate_key)
 );
 
+create table if not exists public.whatsapp_reminders (
+  id text primary key,
+  taxpayer_id text references public.taxpayers(id) on delete set null,
+  plate_key text not null,
+  reminder_number smallint not null check (reminder_number between 1 and 10),
+  template_version smallint not null check (template_version between 1 and 10),
+  sent_at timestamptz not null default now()
+);
+
 create index if not exists taxpayers_updated_at_idx on public.taxpayers (updated_at desc);
 create index if not exists production_records_plate_key_idx on public.production_records (plate_key);
 create index if not exists production_records_updated_at_idx on public.production_records (updated_at desc);
+create index if not exists whatsapp_reminders_plate_key_sent_at_idx on public.whatsapp_reminders (plate_key, sent_at desc);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -66,6 +76,7 @@ for each row execute function public.set_updated_at();
 
 alter table public.taxpayers enable row level security;
 alter table public.production_records enable row level security;
+alter table public.whatsapp_reminders enable row level security;
 
 -- Hapus kebijakan versi lama, lalu izinkan aplikasi tanpa login membaca dan
 -- memperbarui kedua tabel melalui publishable key.
@@ -85,6 +96,14 @@ drop policy if exists production_sync_update on public.production_records;
 drop policy if exists production_public_access on public.production_records;
 create policy production_public_access
 on public.production_records
+for all
+to anon
+using (true)
+with check (true);
+
+drop policy if exists whatsapp_reminders_public_access on public.whatsapp_reminders;
+create policy whatsapp_reminders_public_access
+on public.whatsapp_reminders
 for all
 to anon
 using (true)
