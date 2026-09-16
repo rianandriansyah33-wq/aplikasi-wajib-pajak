@@ -216,6 +216,11 @@ body {
   padding: 1.1rem;
 }
 
+.payout-calendar-panel {
+  margin-top: 1rem;
+  padding: 1.1rem;
+}
+
 .chart-summary {
   align-items: flex-end;
   display: flex;
@@ -246,6 +251,191 @@ body {
   margin-top: 0.65rem;
   min-width: 0;
   position: relative;
+}
+
+.payout-calendar-heading {
+  align-items: flex-end;
+}
+
+.payout-period-control {
+  color: var(--app-muted);
+  display: grid;
+  flex: 0 0 min(100%, 250px);
+  font-size: .71rem;
+  font-weight: 800;
+  gap: .3rem;
+}
+
+.payout-period-control .form-select {
+  background-color: var(--analysis-soft);
+  border-color: var(--analysis-border);
+  color: var(--app-text);
+  font-size: .9rem;
+  min-height: 42px;
+}
+
+.payout-calendar {
+  display: grid;
+  gap: .45rem;
+  grid-template-columns: repeat(7, minmax(5.6rem, 1fr));
+  margin-top: 1rem;
+  overflow-x: auto;
+  padding-bottom: .25rem;
+}
+
+.payout-calendar-weekday {
+  color: var(--app-muted);
+  font-size: .72rem;
+  font-weight: 850;
+  padding: 0 .45rem;
+  text-align: right;
+}
+
+.payout-calendar-day {
+  align-items: flex-end;
+  background: #f8fafc;
+  border: 1px solid #e1e9f2;
+  border-radius: 6px;
+  color: var(--app-muted);
+  display: flex;
+  flex-direction: column;
+  gap: .22rem;
+  min-height: 5.8rem;
+  padding: .5rem;
+  text-align: right;
+}
+
+button.payout-calendar-day {
+  cursor: pointer;
+  font: inherit;
+}
+
+.payout-calendar-day.is-empty {
+  border-color: transparent;
+  visibility: hidden;
+}
+
+.payout-calendar-day strong {
+  color: var(--app-text);
+  font-size: .9rem;
+  font-weight: 900;
+}
+
+.payout-calendar-day.has-payout {
+  background: #eff9f5;
+  border-color: #b9e3d1;
+  color: #16734b;
+}
+
+.payout-calendar-day.has-payout:hover,
+.payout-calendar-day.has-payout:focus-visible,
+.payout-calendar-day.is-selected {
+  background: #dff3e9;
+  border-color: #158f68;
+  box-shadow: 0 0 0 .18rem rgba(21, 143, 104, .14);
+  outline: none;
+}
+
+.payout-calendar-day span,
+.payout-calendar-day small {
+  font-size: .68rem;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.payout-detail-heading {
+  align-items: flex-end;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-top: 1.4rem;
+}
+
+.payout-detail-heading h3 {
+  color: var(--app-text);
+  font-size: 1rem;
+  font-weight: 850;
+  margin: 0;
+}
+
+.payout-detail-summary {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: .18rem;
+  text-align: right;
+}
+
+.payout-detail-summary strong {
+  color: var(--app-primary);
+  font-size: .95rem;
+  font-weight: 900;
+}
+
+.payout-detail-summary span,
+.payout-empty {
+  color: var(--app-muted);
+  font-size: .77rem;
+}
+
+.payout-table-scroll {
+  border: 1px solid var(--analysis-border);
+  border-radius: 7px;
+  margin-top: .75rem;
+  overflow: auto;
+}
+
+.payout-table {
+  border-collapse: collapse;
+  min-width: 960px;
+  width: 100%;
+}
+
+.payout-table th,
+.payout-table td {
+  border-bottom: 1px solid #e7edf4;
+  padding: .66rem .7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.payout-table th {
+  background: #f5f8fb;
+  color: #526071;
+  font-size: .7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.payout-table td {
+  color: var(--app-text);
+  font-size: .78rem;
+  line-height: 1.38;
+}
+
+.payout-table tbody tr:hover {
+  background: #f7fbfa;
+}
+
+.payout-table td:nth-child(1),
+.payout-table th:nth-child(1) {
+  text-align: center;
+  width: 3.2rem;
+}
+
+.payout-plate,
+.payout-nominal {
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.payout-nominal {
+  color: #16734b !important;
+}
+
+.payout-empty {
+  margin: .8rem 0 0;
 }
 
 @media (max-width: 900px) {
@@ -300,6 +490,22 @@ body {
   .chart-wrap {
     height: 290px;
   }
+
+  .payout-calendar-heading,
+  .payout-detail-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .payout-period-control {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .payout-detail-summary {
+    align-items: flex-start;
+    text-align: left;
+  }
 }
 
 @media (max-width: 430px) {
@@ -308,7 +514,8 @@ body {
   }
 
   .analysis-overview,
-  .payment-chart-panel {
+  .payment-chart-panel,
+  .payout-calendar-panel {
     padding: 0.8rem;
   }
 }

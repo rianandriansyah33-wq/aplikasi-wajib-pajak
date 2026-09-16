@@ -17,12 +17,21 @@ const controls = {
   dailyPaymentChart: document.querySelector("#dailyPaymentChart"),
   averagePaymentDuration: document.querySelector("#averagePaymentDuration"),
   paymentDurationDetail: document.querySelector("#paymentDurationDetail"),
-  paymentDurationChart: document.querySelector("#paymentDurationChart")
+  paymentDurationChart: document.querySelector("#paymentDurationChart"),
+  payoutPeriodFilter: document.querySelector("#payoutPeriodFilter"),
+  payoutCalendar: document.querySelector("#payoutCalendar"),
+  payoutDateLabel: document.querySelector("#payoutDateLabel"),
+  payoutDateCount: document.querySelector("#payoutDateCount"),
+  payoutDateTotal: document.querySelector("#payoutDateTotal"),
+  payoutTableBody: document.querySelector("#payoutTableBody"),
+  payoutEmpty: document.querySelector("#payoutEmpty")
 };
 
 let productionRecords = [];
 let dailyPaymentChart = null;
 let paymentDurationChart = null;
+let selectedPayoutDate = "";
+let payoutRecordsByDate = new Map();
 
 function setStatus(message, state = "neutral") {
   if (!controls.status) return;
@@ -64,6 +73,11 @@ function getDateValue(value) {
 function getRecordedPeriod(record) {
   const recordedDate = getIsoDate(record.recorded_date);
   return recordedDate ? recordedDate.slice(0, 7) : "";
+}
+
+function getPaidPeriod(record) {
+  const paidDate = getIsoDate(record.paid_date);
+  return paidDate ? paidDate.slice(0, 7) : "";
 }
 
 function isExplicitlyPaid(record) {
@@ -109,6 +123,10 @@ function formatNumber(value) {
   return new Intl.NumberFormat("id-ID").format(Number(value || 0));
 }
 
+function formatCurrency(value) {
+  return `Rp ${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(Number(value || 0))},-`;
+}
+
 function formatPeriod(period) {
   if (!/^\d{4}-\d{2}$/.test(String(period || ""))) return "Bulan belum tersedia";
   return new Intl.DateTimeFormat("id-ID", { month: "long", year: "numeric" })
@@ -139,6 +157,25 @@ function populateRecordedPeriodFilter() {
   });
 
   controls.recordedPeriodFilter.value = periods.includes(currentValue) ? currentValue : (periods[0] || "");
+}
+
+function populatePayoutPeriodFilter() {
+  if (!controls.payoutPeriodFilter) return;
+  const currentValue = controls.payoutPeriodFilter.value;
+  const periods = [...new Set(productionRecords
+    .filter(isExplicitlyPaid)
+    .map(getPaidPeriod)
+    .filter(Boolean))].sort().reverse();
+  controls.payoutPeriodFilter.innerHTML = "";
+
+  periods.forEach((period) => {
+    const option = document.createElement("option");
+    option.value = period;
+    option.textContent = formatPeriod(period);
+    controls.payoutPeriodFilter.appendChild(option);
+  });
+
+  controls.payoutPeriodFilter.value = periods.includes(currentValue) ? currentValue : (periods[0] || "");
 }
 
 function buildDailyPaymentPattern(vehicles, selectedPeriod) {
@@ -190,6 +227,178 @@ function buildPaymentDurations(records) {
   });
 
   return { buckets, durations };
+}
+
+function getPayoutNominal(record) {
+  const calculated = Number(record.calculated_tax_potential || 0);
+  if (calculated > 0) return calculated;
+  return Number(record.tax_base_amount || 0) + Number(record.jasa_raharja || 0) + Number(record.late_penalty || 0);
+}
+
+function getLocationDetails(record) {
+  const sourceParts = String(record.source_text || "").split("|").map((part) => part.trim());
+  let locationSource = sourceParts[2] || "";
+  const ownerName = String(record.owner_name || "").trim();
+  if (ownerName && locationSource.toUpperCase().startsWith(ownerName.toUpperCase())) {
+    locationSource = locationSource.slice(ownerName.length).trim();
+  }
+
+  const kecamatanMatch = locationSource.match(/\bKEC(?:AMATAN)?\.?\s+(.+?)(?=\s+\bKEL(?:URAHAN)?\.?\s+|$)/i);
+  const kelurahanMatch = locationSource.match(/\bKEL(?:URAHAN)?\.?\s+(.+?)(?=\s+\bKEC(?:AMATAN)?\.?\s+|$)/i);
+  const address = locationSource
+    .replace(/\bKEC(?:AMATAN)?\.?\s+.*$/i, "")
+    .replace(/\bKEL(?:URAHAN)?\.?\s+.*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return {
+    address: address || "-",
+    kelurahan: kelurahanMatch ? kelurahanMatch[1].replace(/\s+/g, " ").trim() : "-",
+    kecamatan: kecamatanMatch ? kecamatanMatch[1].replace(/\s+/g, " ").trim() : "-"
+  };
+}
+
+function buildPayoutRecordsByDate(records, period) {
+  const uniquePayouts = new Map();
+
+  records.forEach((record) => {
+    if (!isExplicitlyPaid(record) || getPaidPeriod(record) !== period) return;
+    const paidDate = getIsoDate(record.paid_date);
+    const plateKey = getPlateKey(record);
+    if (!paidDate || !plateKey) return;
+
+    const key = `${plateKey}|${paidDate}`;
+    const existing = uniquePayouts.get(key);
+    if (!existing || getPayoutNominal(record) > getPayoutNominal(existing)) uniquePayouts.set(key, record);
+  });
+
+  const byDate = new Map();
+  uniquePayouts.forEach((record) => {
+    const paidDate = getIsoDate(record.paid_date);
+    const payout = {
+      record,
+      nominal: getPayoutNominal(record),
+      location: getLocationDetails(record)
+    };
+    const entries = byDate.get(paidDate) || [];
+    entries.push(payout);
+    byDate.set(paidDate, entries);
+  });
+
+  byDate.forEach((entries) => {
+    entries.sort((left, right) => right.nominal - left.nominal || String(left.record.owner_name || "").localeCompare(String(right.record.owner_name || ""), "id"));
+  });
+  return byDate;
+}
+
+function createCalendarDayLabel(dateValue, entries) {
+  const count = entries.length;
+  const total = entries.reduce((sum, entry) => sum + entry.nominal, 0);
+  return `${formatDate(dateValue)}: ${formatNumber(count)} pencairan, total ${formatCurrency(total)}.`;
+}
+
+function renderPayoutDetail() {
+  if (!controls.payoutTableBody) return;
+  const entries = payoutRecordsByDate.get(selectedPayoutDate) || [];
+  controls.payoutTableBody.replaceChildren();
+  if (controls.payoutEmpty) controls.payoutEmpty.hidden = entries.length > 0;
+
+  if (!entries.length) {
+    setMetric(controls.payoutDateLabel, "Pilih tanggal pencairan");
+    setMetric(controls.payoutDateCount, "-");
+    setMetric(controls.payoutDateTotal, "Belum ada data untuk ditampilkan");
+    return;
+  }
+
+  const total = entries.reduce((sum, entry) => sum + entry.nominal, 0);
+  setMetric(controls.payoutDateLabel, `Pencairan ${formatDate(selectedPayoutDate)}`);
+  setMetric(controls.payoutDateCount, `${formatNumber(entries.length)} pencairan`);
+  setMetric(controls.payoutDateTotal, `Total ${formatCurrency(total)}`);
+
+  entries.forEach((entry, index) => {
+    const row = document.createElement("tr");
+    const values = [
+      index + 1,
+      entry.record.owner_name || "-",
+      entry.location.address,
+      entry.location.kelurahan,
+      entry.location.kecamatan,
+      entry.record.plate_number || "-",
+      formatCurrency(entry.nominal),
+      formatDate(entry.record.paid_date)
+    ];
+    values.forEach((value, valueIndex) => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      if (valueIndex === 5) cell.className = "payout-plate";
+      if (valueIndex === 6) cell.className = "payout-nominal";
+      row.appendChild(cell);
+    });
+    controls.payoutTableBody.appendChild(row);
+  });
+}
+
+function renderPayoutCalendar() {
+  if (!controls.payoutCalendar || !controls.payoutPeriodFilter) return;
+  const period = controls.payoutPeriodFilter.value;
+  payoutRecordsByDate = buildPayoutRecordsByDate(productionRecords, period);
+  const dates = [...payoutRecordsByDate.keys()].sort();
+  if (!dates.includes(selectedPayoutDate)) selectedPayoutDate = dates[dates.length - 1] || "";
+  controls.payoutCalendar.replaceChildren();
+
+  const weekdays = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
+  weekdays.forEach((weekday) => {
+    const label = document.createElement("span");
+    label.className = "payout-calendar-weekday";
+    label.textContent = weekday;
+    controls.payoutCalendar.appendChild(label);
+  });
+
+  if (period) {
+    const [year, month] = period.split("-").map(Number);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+
+    for (let index = 0; index < firstWeekday; index += 1) {
+      const blank = document.createElement("span");
+      blank.className = "payout-calendar-day is-empty";
+      blank.setAttribute("aria-hidden", "true");
+      controls.payoutCalendar.appendChild(blank);
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const dateValue = `${period}-${String(day).padStart(2, "0")}`;
+      const entries = payoutRecordsByDate.get(dateValue) || [];
+      const dayElement = document.createElement(entries.length ? "button" : "span");
+      dayElement.className = "payout-calendar-day";
+      const dayNumber = document.createElement("strong");
+      dayNumber.textContent = day;
+      dayElement.appendChild(dayNumber);
+
+      if (entries.length) {
+        dayElement.type = "button";
+        dayElement.classList.add("has-payout");
+        dayElement.classList.toggle("is-selected", dateValue === selectedPayoutDate);
+        dayElement.setAttribute("aria-pressed", String(dateValue === selectedPayoutDate));
+        dayElement.setAttribute("aria-label", createCalendarDayLabel(dateValue, entries));
+
+        const count = document.createElement("span");
+        count.textContent = `${formatNumber(entries.length)} cair`;
+        const total = document.createElement("small");
+        total.textContent = formatCurrency(entries.reduce((sum, entry) => sum + entry.nominal, 0));
+        dayElement.append(count, total);
+        dayElement.addEventListener("click", () => {
+          selectedPayoutDate = dateValue;
+          renderPayoutCalendar();
+        });
+      } else {
+        dayElement.setAttribute("aria-label", `${formatDate(dateValue)}: tidak ada pencairan.`);
+      }
+      controls.payoutCalendar.appendChild(dayElement);
+    }
+  }
+
+  renderPayoutDetail();
 }
 
 function renderMetrics(vehicles, dailyPayments) {
@@ -309,6 +518,7 @@ function renderAnalysis() {
   renderMetrics(vehicles, dailyPayments);
   renderDailyPaymentChart(dailyPayments);
   renderPaymentDuration(paymentDurations);
+  renderPayoutCalendar();
 }
 
 function setSource() {
@@ -333,8 +543,8 @@ async function requestSupabase(path, options = {}) {
 
 async function fetchProductionRecords() {
   const fields = [
-    "id", "plate_key", "plate_number", "letter_type", "is_paid", "paid_date",
-    "recorded_date", "source_text", "updated_at"
+    "id", "plate_key", "plate_number", "letter_type", "owner_name", "is_paid", "paid_date",
+    "recorded_date", "tax_base_amount", "jasa_raharja", "late_penalty", "calculated_tax_potential", "source_text", "updated_at"
   ].join(",");
   const pageSize = 1000;
   const records = [];
@@ -364,6 +574,7 @@ async function loadAnalysis() {
   try {
     productionRecords = await fetchProductionRecords();
     populateRecordedPeriodFilter();
+    populatePayoutPeriodFilter();
     setSource();
     renderAnalysis();
     setStatus("DATABASE: ANALISIS TERHUBUNG", "success");
@@ -377,5 +588,9 @@ async function loadAnalysis() {
 }
 
 controls.recordedPeriodFilter?.addEventListener("change", renderAnalysis);
+controls.payoutPeriodFilter?.addEventListener("change", () => {
+  selectedPayoutDate = "";
+  renderPayoutCalendar();
+});
 controls.refreshButton?.addEventListener("click", loadAnalysis);
 loadAnalysis();
