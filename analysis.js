@@ -54,7 +54,10 @@ function normalizeText(value) {
 }
 
 function getPlateKey(record) {
-  return normalizeText(record.plate_key || record.plate_number).replace(/\s/g, "");
+  const plateValue = typeof record === "string"
+    ? record
+    : (record && (record.plate_key || record.plate_number));
+  return normalizeText(plateValue).replace(/\s/g, "");
 }
 
 function getIsoDate(value) {
