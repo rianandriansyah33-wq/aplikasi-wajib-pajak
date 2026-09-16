@@ -72,14 +72,14 @@
           <div class="chart-heading">
             <div>
               <p class="section-eyebrow">POLA PELUNASAN HARIAN</p>
-              <h2 id="dailyPaymentTitle">Pencairan Dinas Luar per Tanggal</h2>
+              <h2 id="dailyPaymentTitle">Pelunasan Buku Produksi per Tanggal</h2>
             </div>
             <div class="chart-summary">
               <strong id="peakPaymentDay">-</strong>
               <span id="peakPaymentDetail">Menunggu data pembayaran</span>
             </div>
           </div>
-          <p class="chart-description">Grafik hanya menampilkan pelunasan surat yang tercatat sebagai penugasan DL pada aplikasi ini.</p>
+          <p class="chart-description">Grafik menampilkan seluruh pelunasan Buku Produksi SIAPP pada bulan berdasarkan tanggal bayar.</p>
           <div class="chart-wrap"><canvas id="dailyPaymentChart"></canvas></div>
         </section>
 
@@ -87,14 +87,14 @@
           <div class="chart-heading">
             <div>
               <p class="section-eyebrow">DURASI PELUNASAN</p>
-              <h2 id="paymentDurationTitle">Lama Proses Pencairan Dinas Luar</h2>
+              <h2 id="paymentDurationTitle">Lama Proses Pembayaran</h2>
             </div>
             <div class="chart-summary">
               <strong id="averagePaymentDuration">-</strong>
               <span id="paymentDurationDetail">Menunggu data durasi pembayaran</span>
             </div>
           </div>
-          <p class="chart-description">Setiap surat DL dihitung dari tanggal rekam surat yang menjadi penugasan sampai tanggal bayar. Visualisasi ini mencakup seluruh riwayat DL dan tidak dipengaruhi filter bulan.</p>
+          <p class="chart-description">Setiap surat dihitung dari tanggal rekam Buku Produksi sampai tanggal bayar. Visualisasi ini mencakup seluruh data dan tidak dipengaruhi filter bulan.</p>
           <div class="chart-wrap"><canvas id="paymentDurationChart"></canvas></div>
         </section>
 
@@ -102,15 +102,14 @@
           <div class="chart-heading payout-calendar-heading">
             <div>
               <p class="section-eyebrow">KALENDER PENCAIRAN</p>
-              <h2 id="payoutCalendarTitle">Pencairan Dinas Luar per Tanggal Bayar</h2>
+              <h2 id="payoutCalendarTitle">Pencairan per Tanggal Bayar</h2>
             </div>
             <label class="payout-period-control" for="payoutPeriodFilter">
               <span>Bulan Tanggal Bayar</span>
               <select class="form-select" id="payoutPeriodFilter"></select>
             </label>
           </div>
-          <p class="chart-description">Hanya pelunasan yang cocok dengan snapshot surat saat DL yang dihitung. Pilih tanggal untuk melihat rincian dan urutan nominal terbesar.</p>
-          <p class="payout-attribution-note" id="payoutAttributionNote">Memeriksa kecocokan surat DL dengan Buku Produksi SIAPP...</p>
+          <p class="chart-description">Seluruh pelunasan Buku Produksi SIAPP dihitung secara global. Pilih tanggal untuk melihat rincian dan urutan nominal terbesar.</p>
           <div class="payout-period-totals" id="payoutPeriodTotals" aria-live="polite"></div>
           <div class="payout-calendar" id="payoutCalendar" aria-label="Kalender pencairan"></div>
 
@@ -148,6 +147,6 @@
 
     <script src="config.js?v=20260910-1235"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
-  <script src="analysis.js?v=20260916-1730"></script>
+  <script src="analysis.js?v=20260916-1800"></script>
   </body>
 </html>

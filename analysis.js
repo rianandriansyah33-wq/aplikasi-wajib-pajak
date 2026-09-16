@@ -19,7 +19,6 @@ const controls = {
   paymentDurationDetail: document.querySelector("#paymentDurationDetail"),
   paymentDurationChart: document.querySelector("#paymentDurationChart"),
   payoutPeriodFilter: document.querySelector("#payoutPeriodFilter"),
-  payoutAttributionNote: document.querySelector("#payoutAttributionNote"),
   payoutPeriodTotals: document.querySelector("#payoutPeriodTotals"),
   payoutCalendar: document.querySelector("#payoutCalendar"),
   payoutDateLabel: document.querySelector("#payoutDateLabel"),
@@ -30,9 +29,6 @@ const controls = {
 };
 
 let productionRecords = [];
-let fieldVisitAssignments = [];
-let attributedPayoutRecords = [];
-let fieldVisitAssignmentsError = null;
 let dailyPaymentChart = null;
 let paymentDurationChart = null;
 let selectedPayoutDate = "";
@@ -229,35 +225,6 @@ function getPayoutNominal(record) {
   return Number(record.tax_base_amount || 0) + Number(record.jasa_raharja || 0) + Number(record.late_penalty || 0);
 }
 
-function getAttributedPayoutRecords(records, assignments) {
-  const assignmentsByProductionId = new Map();
-  (assignments || []).forEach((assignment) => {
-    const productionRecordId = String(assignment.production_record_id || "");
-    if (productionRecordId) assignmentsByProductionId.set(productionRecordId, assignment);
-  });
-
-  return records.filter((record) => {
-    const assignment = assignmentsByProductionId.get(String(record.id || ""));
-    if (!assignment) return false;
-    return getPlateKey(record) === getPlateKey(assignment.plate_key)
-      && String(record.letter_type || "").toUpperCase() === String(assignment.letter_type || "").toUpperCase();
-  });
-}
-
-function renderPayoutAttributionNote(records) {
-  if (!controls.payoutAttributionNote) return;
-  if (fieldVisitAssignmentsError) {
-    controls.payoutAttributionNote.textContent = "Riwayat penugasan belum tersedia. Jalankan migrasi atribusi pencairan di Supabase agar total tidak mencampurkan pencairan petugas lain.";
-    controls.payoutAttributionNote.dataset.state = "warning";
-    return;
-  }
-
-  const productionIds = new Set(productionRecords.map((record) => String(record.id || "")));
-  const unmatchedAssignments = fieldVisitAssignments.filter((assignment) => !productionIds.has(String(assignment.production_record_id || ""))).length;
-  controls.payoutAttributionNote.textContent = `${formatNumber(fieldVisitAssignments.length)} snapshot surat DL tersimpan. ${formatNumber(records.length)} surat cocok dengan Buku Produksi dan dipakai untuk total pencairan${unmatchedAssignments ? `; ${formatNumber(unmatchedAssignments)} snapshot belum ditemukan pada data SIAPP saat ini.` : "."}`;
-  controls.payoutAttributionNote.dataset.state = "success";
-}
-
 function getLocationDetails(record) {
   const sourceParts = String(record.source_text || "").split("|").map((part) => part.trim());
   let locationSource = sourceParts[2] || "";
@@ -428,7 +395,7 @@ function renderPayoutDetail() {
 function renderPayoutCalendar() {
   if (!controls.payoutCalendar || !controls.payoutPeriodFilter) return;
   const period = controls.payoutPeriodFilter.value;
-  payoutRecordsByDate = buildPayoutRecordsByDate(attributedPayoutRecords, period);
+  payoutRecordsByDate = buildPayoutRecordsByDate(productionRecords, period);
   renderPayoutPeriodTotals(period, payoutRecordsByDate);
   const dates = [...payoutRecordsByDate.keys()].sort();
   if (!dates.includes(selectedPayoutDate)) selectedPayoutDate = dates[dates.length - 1] || "";
@@ -501,7 +468,7 @@ function renderMetrics(vehicles, dailyPayments) {
   setMetric(controls.paidRate, `${paidRate.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`);
 
   setMetric(controls.peakPaymentDay, peak.count ? `Tanggal ${peak.day}` : "Belum ada pencairan");
-  setMetric(controls.peakPaymentDetail, peak.count ? `${formatNumber(peak.count)} pencairan DL pada tanggal ini.` : "Belum ada tanggal bayar pada bulan terpilih.");
+  setMetric(controls.peakPaymentDetail, peak.count ? `${formatNumber(peak.count)} pelunasan pada tanggal ini.` : "Belum ada tanggal bayar pada bulan terpilih.");
 }
 
 function renderDailyPaymentChart(dailyPayments) {
@@ -513,7 +480,7 @@ function renderDailyPaymentChart(dailyPayments) {
     data: {
       labels: dailyPayments.map((item) => item.day),
       datasets: [{
-        label: "Pencairan DL",
+        label: "Pelunasan",
         data: dailyPayments.map((item) => item.count),
         backgroundColor: "#158f68",
         borderRadius: 5,
@@ -525,7 +492,7 @@ function renderDailyPaymentChart(dailyPayments) {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label(context) { return `${formatNumber(context.raw)} pencairan DL`; } } }
+        tooltip: { callbacks: { label(context) { return `${formatNumber(context.raw)} pelunasan`; } } }
       },
       scales: {
         y: {
@@ -568,7 +535,7 @@ function renderPaymentDuration(durationData) {
     data: {
       labels: buckets.map((bucket) => bucket.label),
       datasets: [{
-        label: "Pencairan DL",
+        label: "Pelunasan",
         data: buckets.map((bucket) => bucket.count),
         backgroundColor: ["#158f68", "#0b8078", "#d19219", "#dd8f35", "#c8513a", "#b83336"],
         borderRadius: 5,
@@ -580,7 +547,7 @@ function renderPaymentDuration(durationData) {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label(context) { return `${formatNumber(context.raw)} pencairan DL`; } } }
+        tooltip: { callbacks: { label(context) { return `${formatNumber(context.raw)} pelunasan`; } } }
       },
       scales: {
         y: {
@@ -601,13 +568,11 @@ function renderPaymentDuration(durationData) {
 function renderAnalysis() {
   const selectedPeriod = controls.recordedPeriodFilter.value;
   const vehicles = createMonthlyVehicles(productionRecords, selectedPeriod);
-  attributedPayoutRecords = getAttributedPayoutRecords(productionRecords, fieldVisitAssignments);
-  const dailyPayments = buildDailyPaymentPattern(attributedPayoutRecords, selectedPeriod);
-  const paymentDurations = buildPaymentDurations(attributedPayoutRecords);
+  const dailyPayments = buildDailyPaymentPattern(productionRecords, selectedPeriod);
+  const paymentDurations = buildPaymentDurations(productionRecords);
   renderMetrics(vehicles, dailyPayments);
   renderDailyPaymentChart(dailyPayments);
   renderPaymentDuration(paymentDurations);
-  renderPayoutAttributionNote(attributedPayoutRecords);
   renderPayoutCalendar();
 }
 
@@ -651,25 +616,6 @@ async function fetchProductionRecords() {
   return records;
 }
 
-async function fetchFieldVisitAssignments() {
-  const fields = [
-    "id", "plate_key", "letter_type", "production_record_id", "production_recorded_date", "field_visit_date"
-  ].join(",");
-  const pageSize = 1000;
-  const assignments = [];
-
-  for (let offset = 0; ; offset += pageSize) {
-    const response = await requestSupabase(`/rest/v1/field_visit_assignments?select=${encodeURIComponent(fields)}&order=field_visit_date.desc,id.desc`, {
-      headers: { Range: `${offset}-${offset + pageSize - 1}` }
-    });
-    const page = await response.json();
-    assignments.push(...page);
-    if (page.length < pageSize) break;
-  }
-
-  return assignments;
-}
-
 async function loadAnalysis() {
   if (!ANALYSIS_SUPABASE_URL || !ANALYSIS_SUPABASE_KEY) {
     setStatus("DATABASE: KONFIGURASI BELUM LENGKAP", "error");
@@ -682,17 +628,8 @@ async function loadAnalysis() {
 
   try {
     productionRecords = await fetchProductionRecords();
-    try {
-      fieldVisitAssignments = await fetchFieldVisitAssignments();
-      fieldVisitAssignmentsError = null;
-    } catch (error) {
-      console.warn("Riwayat penugasan DL belum tersedia.", error);
-      fieldVisitAssignments = [];
-      fieldVisitAssignmentsError = error;
-    }
     populateRecordedPeriodFilter();
-    attributedPayoutRecords = getAttributedPayoutRecords(productionRecords, fieldVisitAssignments);
-    populatePayoutPeriodFilter(attributedPayoutRecords);
+    populatePayoutPeriodFilter(productionRecords);
     setSource();
     renderAnalysis();
     setStatus("DATABASE: ANALISIS TERHUBUNG", "success");
