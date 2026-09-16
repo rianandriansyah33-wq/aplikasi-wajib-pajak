@@ -687,6 +687,27 @@ textarea.form-control {
   display: none;
 }
 
+.field-visit-snapshot {
+  color: var(--app-muted);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35;
+  margin-top: 0.38rem;
+}
+
+.field-visit-snapshot:empty {
+  display: none;
+}
+
+.field-visit-snapshot[data-state="success"] {
+  color: var(--app-success);
+}
+
+.field-visit-snapshot[data-state="warning"] {
+  color: var(--app-warning);
+}
+
 .duplicate-check.is-duplicate,
 .production-check.is-paid {
   background: var(--app-success-soft);

@@ -246,6 +246,20 @@ body {
   margin: 0.8rem 0 0;
 }
 
+.payout-attribution-note {
+  border-left: 3px solid #158f68;
+  color: #27634e;
+  font-size: .76rem;
+  line-height: 1.4;
+  margin: .8rem 0 0;
+  padding-left: .65rem;
+}
+
+.payout-attribution-note[data-state="warning"] {
+  border-left-color: #d19219;
+  color: #8b5a06;
+}
+
 .chart-wrap {
   height: 390px;
   margin-top: 0.65rem;

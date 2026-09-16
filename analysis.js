@@ -19,6 +19,7 @@ const controls = {
   paymentDurationDetail: document.querySelector("#paymentDurationDetail"),
   paymentDurationChart: document.querySelector("#paymentDurationChart"),
   payoutPeriodFilter: document.querySelector("#payoutPeriodFilter"),
+  payoutAttributionNote: document.querySelector("#payoutAttributionNote"),
   payoutPeriodTotals: document.querySelector("#payoutPeriodTotals"),
   payoutCalendar: document.querySelector("#payoutCalendar"),
   payoutDateLabel: document.querySelector("#payoutDateLabel"),
@@ -29,6 +30,9 @@ const controls = {
 };
 
 let productionRecords = [];
+let fieldVisitAssignments = [];
+let attributedPayoutRecords = [];
+let fieldVisitAssignmentsError = null;
 let dailyPaymentChart = null;
 let paymentDurationChart = null;
 let selectedPayoutDate = "";
@@ -160,10 +164,10 @@ function populateRecordedPeriodFilter() {
   controls.recordedPeriodFilter.value = periods.includes(currentValue) ? currentValue : (periods[0] || "");
 }
 
-function populatePayoutPeriodFilter() {
+function populatePayoutPeriodFilter(records) {
   if (!controls.payoutPeriodFilter) return;
   const currentValue = controls.payoutPeriodFilter.value;
-  const periods = [...new Set(productionRecords
+  const periods = [...new Set((records || [])
     .filter(isExplicitlyPaid)
     .map(getPaidPeriod)
     .filter(Boolean))].sort().reverse();
@@ -179,11 +183,11 @@ function populatePayoutPeriodFilter() {
   controls.payoutPeriodFilter.value = periods.includes(currentValue) ? currentValue : (periods[0] || "");
 }
 
-function buildDailyPaymentPattern(vehicles, selectedPeriod) {
+function buildDailyPaymentPattern(records, selectedPeriod) {
   const days = Array.from({ length: 31 }, (_, index) => ({ day: index + 1, count: 0 }));
 
-  vehicles.filter((item) => item.isPaid).forEach((item) => {
-    const paidDate = getIsoDate(item.record.paid_date);
+  records.filter(isExplicitlyPaid).forEach((record) => {
+    const paidDate = getIsoDate(record.paid_date);
     if (!paidDate || paidDate.slice(0, 7) !== selectedPeriod) return;
     const day = Number(paidDate.slice(8, 10));
     if (day >= 1 && day <= 31) days[day - 1].count += 1;
@@ -201,27 +205,13 @@ function buildPaymentDurations(records) {
     { label: "61-90 hari", count: 0, min: 61, max: 90 },
     { label: ">90 hari", count: 0, min: 91, max: Infinity }
   ];
-  const byPlate = new Map();
-
-  records.forEach((record) => {
-    const plateKey = getPlateKey(record);
-    const recordedDate = getIsoDate(record.recorded_date);
-    if (!plateKey || !recordedDate) return;
-
-    const history = byPlate.get(plateKey) || { firstRecordedDate: recordedDate, paidDates: [] };
-    if (recordedDate < history.firstRecordedDate) history.firstRecordedDate = recordedDate;
-
-    const paidDate = getIsoDate(record.paid_date);
-    if (isExplicitlyPaid(record) && paidDate) history.paidDates.push(paidDate);
-    byPlate.set(plateKey, history);
-  });
-
   const durations = [];
-  byPlate.forEach((history) => {
-    const firstPaidDate = history.paidDates.sort().find((paidDate) => paidDate >= history.firstRecordedDate);
-    if (!firstPaidDate) return;
+  records.forEach((record) => {
+    const recordedDate = getIsoDate(record.recorded_date);
+    const paidDate = getIsoDate(record.paid_date);
+    if (!recordedDate || !paidDate || !isExplicitlyPaid(record) || paidDate < recordedDate) return;
 
-    const duration = Math.floor((new Date(`${firstPaidDate}T00:00:00`).getTime() - new Date(`${history.firstRecordedDate}T00:00:00`).getTime()) / 86400000);
+    const duration = Math.floor((new Date(`${paidDate}T00:00:00`).getTime() - new Date(`${recordedDate}T00:00:00`).getTime()) / 86400000);
     durations.push(duration);
     const bucket = buckets.find((itemBucket) => duration >= itemBucket.min && duration <= itemBucket.max);
     if (bucket) bucket.count += 1;
@@ -234,6 +224,35 @@ function getPayoutNominal(record) {
   const calculated = Number(record.calculated_tax_potential || 0);
   if (calculated > 0) return calculated;
   return Number(record.tax_base_amount || 0) + Number(record.jasa_raharja || 0) + Number(record.late_penalty || 0);
+}
+
+function getAttributedPayoutRecords(records, assignments) {
+  const assignmentsByProductionId = new Map();
+  (assignments || []).forEach((assignment) => {
+    const productionRecordId = String(assignment.production_record_id || "");
+    if (productionRecordId) assignmentsByProductionId.set(productionRecordId, assignment);
+  });
+
+  return records.filter((record) => {
+    const assignment = assignmentsByProductionId.get(String(record.id || ""));
+    if (!assignment) return false;
+    return getPlateKey(record) === getPlateKey(assignment.plate_key)
+      && String(record.letter_type || "").toUpperCase() === String(assignment.letter_type || "").toUpperCase();
+  });
+}
+
+function renderPayoutAttributionNote(records) {
+  if (!controls.payoutAttributionNote) return;
+  if (fieldVisitAssignmentsError) {
+    controls.payoutAttributionNote.textContent = "Riwayat penugasan belum tersedia. Jalankan migrasi atribusi pencairan di Supabase agar total tidak mencampurkan pencairan petugas lain.";
+    controls.payoutAttributionNote.dataset.state = "warning";
+    return;
+  }
+
+  const productionIds = new Set(productionRecords.map((record) => String(record.id || "")));
+  const unmatchedAssignments = fieldVisitAssignments.filter((assignment) => !productionIds.has(String(assignment.production_record_id || ""))).length;
+  controls.payoutAttributionNote.textContent = `${formatNumber(fieldVisitAssignments.length)} snapshot surat DL tersimpan. ${formatNumber(records.length)} surat cocok dengan Buku Produksi dan dipakai untuk total pencairan${unmatchedAssignments ? `; ${formatNumber(unmatchedAssignments)} snapshot belum ditemukan pada data SIAPP saat ini.` : "."}`;
+  controls.payoutAttributionNote.dataset.state = "success";
 }
 
 function getLocationDetails(record) {
@@ -406,7 +425,7 @@ function renderPayoutDetail() {
 function renderPayoutCalendar() {
   if (!controls.payoutCalendar || !controls.payoutPeriodFilter) return;
   const period = controls.payoutPeriodFilter.value;
-  payoutRecordsByDate = buildPayoutRecordsByDate(productionRecords, period);
+  payoutRecordsByDate = buildPayoutRecordsByDate(attributedPayoutRecords, period);
   renderPayoutPeriodTotals(period, payoutRecordsByDate);
   const dates = [...payoutRecordsByDate.keys()].sort();
   if (!dates.includes(selectedPayoutDate)) selectedPayoutDate = dates[dates.length - 1] || "";
@@ -478,8 +497,8 @@ function renderMetrics(vehicles, dailyPayments) {
   setMetric(controls.unpaidVehicleCount, formatNumber(unpaidCount));
   setMetric(controls.paidRate, `${paidRate.toLocaleString("id-ID", { maximumFractionDigits: 1 })}%`);
 
-  setMetric(controls.peakPaymentDay, peak.count ? `Tanggal ${peak.day}` : "Belum ada pelunasan");
-  setMetric(controls.peakPaymentDetail, peak.count ? `${formatNumber(peak.count)} kendaraan lunas pada tanggal ini.` : "Belum ada tanggal bayar pada bulan terpilih.");
+  setMetric(controls.peakPaymentDay, peak.count ? `Tanggal ${peak.day}` : "Belum ada pencairan");
+  setMetric(controls.peakPaymentDetail, peak.count ? `${formatNumber(peak.count)} pencairan DL pada tanggal ini.` : "Belum ada tanggal bayar pada bulan terpilih.");
 }
 
 function renderDailyPaymentChart(dailyPayments) {
@@ -491,7 +510,7 @@ function renderDailyPaymentChart(dailyPayments) {
     data: {
       labels: dailyPayments.map((item) => item.day),
       datasets: [{
-        label: "Kendaraan lunas",
+        label: "Pencairan DL",
         data: dailyPayments.map((item) => item.count),
         backgroundColor: "#158f68",
         borderRadius: 5,
@@ -503,7 +522,7 @@ function renderDailyPaymentChart(dailyPayments) {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label(context) { return `${formatNumber(context.raw)} kendaraan lunas`; } } }
+        tooltip: { callbacks: { label(context) { return `${formatNumber(context.raw)} pencairan DL`; } } }
       },
       scales: {
         y: {
@@ -546,7 +565,7 @@ function renderPaymentDuration(durationData) {
     data: {
       labels: buckets.map((bucket) => bucket.label),
       datasets: [{
-        label: "Kendaraan lunas",
+        label: "Pencairan DL",
         data: buckets.map((bucket) => bucket.count),
         backgroundColor: ["#158f68", "#0b8078", "#d19219", "#dd8f35", "#c8513a", "#b83336"],
         borderRadius: 5,
@@ -558,7 +577,7 @@ function renderPaymentDuration(durationData) {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label(context) { return `${formatNumber(context.raw)} kendaraan lunas`; } } }
+        tooltip: { callbacks: { label(context) { return `${formatNumber(context.raw)} pencairan DL`; } } }
       },
       scales: {
         y: {
@@ -579,11 +598,13 @@ function renderPaymentDuration(durationData) {
 function renderAnalysis() {
   const selectedPeriod = controls.recordedPeriodFilter.value;
   const vehicles = createMonthlyVehicles(productionRecords, selectedPeriod);
-  const dailyPayments = buildDailyPaymentPattern(vehicles, selectedPeriod);
-  const paymentDurations = buildPaymentDurations(productionRecords);
+  attributedPayoutRecords = getAttributedPayoutRecords(productionRecords, fieldVisitAssignments);
+  const dailyPayments = buildDailyPaymentPattern(attributedPayoutRecords, selectedPeriod);
+  const paymentDurations = buildPaymentDurations(attributedPayoutRecords);
   renderMetrics(vehicles, dailyPayments);
   renderDailyPaymentChart(dailyPayments);
   renderPaymentDuration(paymentDurations);
+  renderPayoutAttributionNote(attributedPayoutRecords);
   renderPayoutCalendar();
 }
 
@@ -627,6 +648,25 @@ async function fetchProductionRecords() {
   return records;
 }
 
+async function fetchFieldVisitAssignments() {
+  const fields = [
+    "id", "plate_key", "letter_type", "production_record_id", "production_recorded_date", "field_visit_date"
+  ].join(",");
+  const pageSize = 1000;
+  const assignments = [];
+
+  for (let offset = 0; ; offset += pageSize) {
+    const response = await requestSupabase(`/rest/v1/field_visit_assignments?select=${encodeURIComponent(fields)}&order=field_visit_date.desc,id.desc`, {
+      headers: { Range: `${offset}-${offset + pageSize - 1}` }
+    });
+    const page = await response.json();
+    assignments.push(...page);
+    if (page.length < pageSize) break;
+  }
+
+  return assignments;
+}
+
 async function loadAnalysis() {
   if (!ANALYSIS_SUPABASE_URL || !ANALYSIS_SUPABASE_KEY) {
     setStatus("DATABASE: KONFIGURASI BELUM LENGKAP", "error");
@@ -639,8 +679,17 @@ async function loadAnalysis() {
 
   try {
     productionRecords = await fetchProductionRecords();
+    try {
+      fieldVisitAssignments = await fetchFieldVisitAssignments();
+      fieldVisitAssignmentsError = null;
+    } catch (error) {
+      console.warn("Riwayat penugasan DL belum tersedia.", error);
+      fieldVisitAssignments = [];
+      fieldVisitAssignmentsError = error;
+    }
     populateRecordedPeriodFilter();
-    populatePayoutPeriodFilter();
+    attributedPayoutRecords = getAttributedPayoutRecords(productionRecords, fieldVisitAssignments);
+    populatePayoutPeriodFilter(attributedPayoutRecords);
     setSource();
     renderAnalysis();
     setStatus("DATABASE: ANALISIS TERHUBUNG", "success");

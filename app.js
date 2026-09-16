@@ -39,6 +39,7 @@ const fields = {
   ownerName: document.querySelector("#ownerName"),
   taxPotential: document.querySelector("#taxPotential"),
   fieldVisitDate: document.querySelector("#fieldVisitDate"),
+  fieldVisitSnapshot: document.querySelector("#fieldVisitSnapshot"),
   fieldVisitNote: document.querySelector("#fieldVisitNote"),
   phone: document.querySelector("#phone"),
   status: document.querySelector("#status")
@@ -527,6 +528,23 @@ function fromSupabaseProductionRow(row) {
   });
 }
 
+function toSupabaseFieldVisitAssignmentRow(assignment) {
+  return {
+    id: assignment.id,
+    taxpayer_id: assignment.taxpayerId,
+    plate_key: assignment.plateKey,
+    plate_number: assignment.plateNumber,
+    owner_name: assignment.ownerName,
+    letter_type: assignment.letterType,
+    production_record_id: assignment.productionRecordId,
+    production_recorded_date: assignment.productionRecordedDate,
+    field_visit_date: assignment.fieldVisitDate,
+    field_visit_note: assignment.fieldVisitNote,
+    snapshot_tax_potential: Number(assignment.snapshotTaxPotential || 0),
+    assignment_source: assignment.assignmentSource || "saved_snapshot"
+  };
+}
+
 async function requestSupabaseRest(path, options) {
   const requestOptions = options || {};
   const response = await fetch(databaseConfig.supabaseUrl + "/rest/v1/" + path, Object.assign({}, requestOptions, {
@@ -621,6 +639,18 @@ async function requestSupabaseDatabase(action, payload) {
       body: JSON.stringify(rows)
     });
     return { ok: true, productionRecords: saved.map(fromSupabaseProductionRow) };
+  }
+  if (action === "upsertFieldVisitAssignments") {
+    const rows = (payload.assignments || []).map(toSupabaseFieldVisitAssignmentRow).filter(function (item) {
+      return item.taxpayer_id && item.production_record_id && item.field_visit_date;
+    });
+    if (!rows.length) return { ok: true, assignments: [] };
+    const saved = await requestSupabaseRest("field_visit_assignments?on_conflict=id", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify(rows)
+    });
+    return { ok: true, assignments: saved };
   }
   if (action === "deleteMany") {
     const ids = (payload.ids || []).filter(Boolean);
@@ -754,6 +784,19 @@ async function deleteRemoteRecords(ids) {
 async function fetchRemoteProductionRecords() {
   const result = await requestDatabase("listProduction");
   return Array.isArray(result.productionRecords) ? result.productionRecords.map(normalizeProductionRecord) : [];
+}
+
+async function saveFieldVisitAssignment(record) {
+  if (!isSupabaseDatabase()) return;
+  const assignment = createFieldVisitAssignment(record);
+  if (!assignment) return;
+
+  try {
+    await requestDatabase("upsertFieldVisitAssignments", { assignments: [assignment] });
+  } catch (error) {
+    console.warn("Snapshot surat DL belum tersimpan.", error);
+    showToast("Snapshot surat DL belum tersimpan. Jalankan migrasi atribusi pencairan di Supabase.");
+  }
 }
 
 async function fetchRemoteProductionSummary() {
@@ -1927,6 +1970,51 @@ function getProductionMatch(value) {
   return candidates.sort(sortProductionCandidates)[0] || null;
 }
 
+function getProductionMatchAtFieldVisit(record) {
+  const plateKey = getPlateKey(record && record.plateNumber);
+  const fieldVisitDate = toIsoDate(record && record.fieldVisitDate);
+  if (!plateKey || !fieldVisitDate) return null;
+
+  const candidates = (productionRecordsByPlate[plateKey] || []).filter(function (candidate) {
+    const recordedDate = getProductionRecordedDate(candidate);
+    return recordedDate && recordedDate <= fieldVisitDate;
+  });
+  return candidates.sort(sortProductionCandidates)[0] || null;
+}
+
+function createFieldVisitAssignmentId(taxpayerId, productionRecordId) {
+  const cleanTaxpayerId = String(taxpayerId || "").replace(/[^A-Za-z0-9_-]/g, "");
+  const cleanProductionId = String(productionRecordId || "").replace(/[^A-Za-z0-9_-]/g, "");
+  return `dl-${cleanTaxpayerId}-${cleanProductionId}`;
+}
+
+function createFieldVisitAssignment(record) {
+  const taxpayer = normalizeRecord(record);
+  if (!taxpayer.id || !taxpayer.fieldVisitDate) return null;
+
+  // Resolve the letter from its position in the SIAPP timeline, not from the
+  // latest letter currently shown on the taxpayer card.
+  const productionRecord = getProductionMatchAtFieldVisit(taxpayer);
+  const productionRecordedDate = getProductionRecordedDate(productionRecord);
+  if (!productionRecord || !productionRecord.id || !productionRecordedDate) return null;
+
+  const breakdown = getProductionTaxBreakdown(productionRecord);
+  return {
+    id: createFieldVisitAssignmentId(taxpayer.id, productionRecord.id),
+    taxpayerId: taxpayer.id,
+    plateKey: getPlateKey(taxpayer.plateNumber),
+    plateNumber: taxpayer.plateNumber,
+    ownerName: productionRecord.ownerName || taxpayer.ownerName,
+    letterType: productionRecord.letterType,
+    productionRecordId: productionRecord.id,
+    productionRecordedDate: productionRecordedDate,
+    fieldVisitDate: taxpayer.fieldVisitDate,
+    fieldVisitNote: taxpayer.fieldVisitNote,
+    snapshotTaxPotential: breakdown.calculatedTaxPotential || taxpayer.taxPotential,
+    assignmentSource: "saved_snapshot"
+  };
+}
+
 function isRecordPaid(record) {
   const match = getProductionMatch(record);
   if (match) return Boolean(match.isPaid);
@@ -2034,6 +2122,30 @@ function updateSiappAutofillPanel() {
   if (controls.autoOwnerName) controls.autoOwnerName.textContent = match && match.ownerName ? match.ownerName : "-";
   if (controls.autoTaxValidDate) controls.autoTaxValidDate.textContent = match && match.taxValidDate ? formatDate(match.taxValidDate) : "-";
   if (controls.autoTaxPotential) controls.autoTaxPotential.textContent = breakdown && breakdown.calculatedTaxPotential ? formatCurrency(breakdown.calculatedTaxPotential) : "-";
+  updateFieldVisitSnapshotPreview();
+}
+
+function updateFieldVisitSnapshotPreview() {
+  if (!fields.fieldVisitSnapshot) return;
+  const fieldVisitDate = toIsoDate(fields.fieldVisitDate && fields.fieldVisitDate.value);
+  if (!fieldVisitDate) {
+    fields.fieldVisitSnapshot.textContent = "";
+    fields.fieldVisitSnapshot.dataset.state = "";
+    return;
+  }
+
+  const snapshot = getProductionMatchAtFieldVisit({
+    plateNumber: fields.plateNumber.value,
+    fieldVisitDate: fieldVisitDate
+  });
+  if (!snapshot) {
+    fields.fieldVisitSnapshot.textContent = "Surat DL belum dapat dikunci: belum ada record SIAPP pada atau sebelum tanggal DL.";
+    fields.fieldVisitSnapshot.dataset.state = "warning";
+    return;
+  }
+
+  fields.fieldVisitSnapshot.textContent = `Surat DL akan dikunci: ${snapshot.letterType} | Tgl rekam ${formatDate(snapshot.recordedDate)}.`;
+  fields.fieldVisitSnapshot.dataset.state = "success";
 }
 
 function applyProductionDefaultsToForm() {
@@ -2962,7 +3074,13 @@ async function upsertRecord(record) {
     form.dataset.pendingRecordId = record.id;
     idsToDeleteAfterMerge.forEach(queueRemoteDelete);
     queueRemoteUpsert(record);
-    syncPendingRemoteMutations();
+    syncPendingRemoteMutations()
+      .then(function () {
+        return saveFieldVisitAssignment(record);
+      })
+      .catch(function (error) {
+        console.warn("Data DL belum dapat disinkronkan.", error);
+      });
     scheduleRemoteRetry(3000);
     showToast(duplicateMessage || (isUpdate ? "Data diperbarui. Sedang sinkron ke database." : "Data ditambahkan. Sedang sinkron ke database."));
     return;
@@ -3420,8 +3538,12 @@ if (fields.fieldVisitDate) {
   fields.fieldVisitDate.addEventListener("input", function (event) {
     clearFormSyncPending();
     formatDateField(event);
+    updateSiappAutofillPanel();
   });
-  fields.fieldVisitDate.addEventListener("blur", formatDateField);
+  fields.fieldVisitDate.addEventListener("blur", function (event) {
+    formatDateField(event);
+    updateSiappAutofillPanel();
+  });
 }
 
 if (fields.taxPotential) {
