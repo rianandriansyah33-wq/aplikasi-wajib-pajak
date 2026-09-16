@@ -25,13 +25,19 @@ const controls = {
   payoutDateCount: document.querySelector("#payoutDateCount"),
   payoutDateTotal: document.querySelector("#payoutDateTotal"),
   payoutTableBody: document.querySelector("#payoutTableBody"),
-  payoutEmpty: document.querySelector("#payoutEmpty")
+  payoutEmpty: document.querySelector("#payoutEmpty"),
+  payoutHistory: document.querySelector("#payoutHistory"),
+  payoutHistoryTitle: document.querySelector("#payoutHistoryTitle"),
+  payoutHistoryMeta: document.querySelector("#payoutHistoryMeta"),
+  payoutHistoryFlow: document.querySelector("#payoutHistoryFlow"),
+  payoutHistoryTableBody: document.querySelector("#payoutHistoryTableBody")
 };
 
 let productionRecords = [];
 let dailyPaymentChart = null;
 let paymentDurationChart = null;
 let selectedPayoutDate = "";
+let selectedPayoutRecordId = "";
 let payoutRecordsByDate = new Map();
 
 function setStatus(message, state = "neutral") {
@@ -351,6 +357,121 @@ function renderPayoutPeriodTotals(period, byDate) {
   });
 }
 
+function getPaymentHistoryForPlate(plateKey) {
+  const stages = new Map();
+
+  productionRecords
+    .filter((record) => getPlateKey(record) === plateKey)
+    .forEach((record) => {
+      const stageKey = `${String(record.letter_type || "-").toUpperCase()}|${getIsoDate(record.recorded_date)}`;
+      const existing = stages.get(stageKey);
+      if (!existing) {
+        stages.set(stageKey, record);
+        return;
+      }
+
+      const currentIsPaid = isExplicitlyPaid(record);
+      const existingIsPaid = isExplicitlyPaid(existing);
+      if (currentIsPaid !== existingIsPaid) {
+        if (currentIsPaid) stages.set(stageKey, record);
+        return;
+      }
+
+      if (getDateValue(record.updated_at) >= getDateValue(existing.updated_at)) {
+        stages.set(stageKey, record);
+      }
+    });
+
+  return [...stages.values()]
+    .sort((left, right) => {
+      const recordedDifference = getDateValue(left.recorded_date) - getDateValue(right.recorded_date);
+      if (recordedDifference) return recordedDifference;
+
+      const leftRank = LETTER_RANK[String(left.letter_type || "").toUpperCase()] || 0;
+      const rightRank = LETTER_RANK[String(right.letter_type || "").toUpperCase()] || 0;
+      if (leftRank !== rightRank) return leftRank - rightRank;
+
+      return String(left.id || "").localeCompare(String(right.id || ""), "id", { numeric: true });
+    });
+}
+
+function getDaysBetween(startDate, endDate) {
+  const start = getDateValue(startDate);
+  const end = getDateValue(endDate);
+  if (!start || !end || end < start) return null;
+  return Math.floor((end - start) / 86400000);
+}
+
+function getHistoryDurationLabel(history, index) {
+  const record = history[index];
+  const nextRecord = history[index + 1];
+
+  if (nextRecord) {
+    const days = getDaysBetween(record.recorded_date, nextRecord.recorded_date);
+    const nextLetter = String(nextRecord.letter_type || "Surat berikutnya").toUpperCase();
+    return days === null ? `Menuju ${nextLetter}` : `Ke ${nextLetter}: ${days} hari`;
+  }
+
+  if (isExplicitlyPaid(record)) {
+    const days = getDaysBetween(record.recorded_date, record.paid_date);
+    return days === null ? "Sudah lunas" : `Rekam ke lunas: ${days} hari`;
+  }
+
+  return "Menunggu tahap atau pelunasan berikutnya";
+}
+
+function clearPayoutHistory() {
+  if (controls.payoutHistory) controls.payoutHistory.hidden = true;
+  if (controls.payoutHistoryTableBody) controls.payoutHistoryTableBody.replaceChildren();
+}
+
+function renderPayoutHistory() {
+  if (!controls.payoutHistory || !controls.payoutHistoryTableBody) return;
+  const selectedRecord = productionRecords.find((record) => String(record.id || "") === selectedPayoutRecordId);
+  if (!selectedRecord) {
+    clearPayoutHistory();
+    return;
+  }
+
+  const plateKey = getPlateKey(selectedRecord);
+  const history = getPaymentHistoryForPlate(plateKey);
+  if (!history.length) {
+    clearPayoutHistory();
+    return;
+  }
+
+  controls.payoutHistory.hidden = false;
+  setMetric(controls.payoutHistoryTitle, `Riwayat Surat ${selectedRecord.plate_number || plateKey}`);
+  setMetric(controls.payoutHistoryMeta, `${formatNumber(history.length)} surat tercatat`);
+  setMetric(
+    controls.payoutHistoryFlow,
+    `Urutan surat: ${history.map((record) => String(record.letter_type || "-").toUpperCase()).join(" → ")}`
+  );
+  controls.payoutHistoryTableBody.replaceChildren();
+
+  history.forEach((record, index) => {
+    const paid = isExplicitlyPaid(record);
+    const row = document.createElement("tr");
+    const values = [
+      index + 1,
+      String(record.letter_type || "-").toUpperCase(),
+      formatDate(record.recorded_date),
+      paid ? "Lunas" : "Belum lunas",
+      paid ? formatDate(record.paid_date) : "-",
+      getHistoryDurationLabel(history, index)
+    ];
+
+    values.forEach((value, valueIndex) => {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      if (valueIndex === 1) cell.className = "history-letter";
+      if (valueIndex === 3) cell.className = paid ? "history-paid" : "history-unpaid";
+      row.appendChild(cell);
+    });
+    controls.payoutHistoryTableBody.appendChild(row);
+  });
+}
+
 function renderPayoutDetail() {
   if (!controls.payoutTableBody) return;
   const entries = payoutRecordsByDate.get(selectedPayoutDate) || [];
@@ -358,10 +479,16 @@ function renderPayoutDetail() {
   if (controls.payoutEmpty) controls.payoutEmpty.hidden = entries.length > 0;
 
   if (!entries.length) {
+    selectedPayoutRecordId = "";
+    clearPayoutHistory();
     setMetric(controls.payoutDateLabel, "Pilih tanggal pencairan");
     setMetric(controls.payoutDateCount, "-");
     setMetric(controls.payoutDateTotal, "Belum ada data untuk ditampilkan");
     return;
+  }
+
+  if (!entries.some((entry) => String(entry.record.id || "") === selectedPayoutRecordId)) {
+    selectedPayoutRecordId = "";
   }
 
   const total = entries.reduce((sum, entry) => sum + entry.nominal, 0);
@@ -371,6 +498,11 @@ function renderPayoutDetail() {
 
   entries.forEach((entry, index) => {
     const row = document.createElement("tr");
+    const recordId = String(entry.record.id || "");
+    row.classList.toggle("is-history-selected", recordId === selectedPayoutRecordId);
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `Riwayat surat ${entry.record.plate_number || "kendaraan"}`);
     const values = [
       index + 1,
       entry.record.owner_name || "-",
@@ -388,8 +520,20 @@ function renderPayoutDetail() {
       if (valueIndex === 6) cell.className = "payout-nominal";
       row.appendChild(cell);
     });
+    const selectHistory = () => {
+      selectedPayoutRecordId = recordId;
+      renderPayoutDetail();
+    };
+    row.addEventListener("click", selectHistory);
+    row.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      selectHistory();
+    });
     controls.payoutTableBody.appendChild(row);
   });
+
+  renderPayoutHistory();
 }
 
 function renderPayoutCalendar() {

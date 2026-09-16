@@ -467,8 +467,19 @@ button.payout-calendar-day {
   line-height: 1.38;
 }
 
-.payout-table tbody tr:hover {
+.payout-table tbody tr {
+  cursor: pointer;
+}
+
+.payout-table tbody tr:hover,
+.payout-table tbody tr:focus-visible,
+.payout-table tbody tr.is-history-selected {
   background: #f7fbfa;
+  outline: none;
+}
+
+.payout-table tbody tr.is-history-selected {
+  box-shadow: inset 3px 0 0 #158f68;
 }
 
 .payout-table td:nth-child(1),
@@ -489,6 +500,93 @@ button.payout-calendar-day {
 
 .payout-empty {
   margin: .8rem 0 0;
+}
+
+.payout-history {
+  border-top: 1px solid var(--analysis-border);
+  margin-top: 1.25rem;
+  padding-top: 1.15rem;
+}
+
+.payout-history-heading {
+  align-items: flex-end;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.payout-history-heading h3 {
+  color: var(--app-text);
+  font-size: 1rem;
+  font-weight: 850;
+  margin: 0;
+}
+
+.payout-history-heading > p {
+  color: var(--app-muted);
+  font-size: .77rem;
+  font-weight: 750;
+  margin: 0;
+  text-align: right;
+}
+
+.payout-history-flow {
+  color: #27634e;
+  font-size: .8rem;
+  font-weight: 800;
+  line-height: 1.45;
+  margin: .7rem 0 0;
+}
+
+.payout-history-table-scroll {
+  border: 1px solid var(--analysis-border);
+  border-radius: 7px;
+  margin-top: .7rem;
+  overflow: auto;
+}
+
+.payout-history-table {
+  border-collapse: collapse;
+  min-width: 700px;
+  width: 100%;
+}
+
+.payout-history-table th,
+.payout-history-table td {
+  border-bottom: 1px solid #e7edf4;
+  padding: .64rem .7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.payout-history-table th {
+  background: #f5f8fb;
+  color: #526071;
+  font-size: .7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.payout-history-table td {
+  color: var(--app-text);
+  font-size: .78rem;
+  line-height: 1.38;
+}
+
+.history-letter {
+  color: var(--app-primary) !important;
+  font-weight: 900;
+}
+
+.history-paid {
+  color: #16734b !important;
+  font-weight: 850;
+}
+
+.history-unpaid {
+  color: #a56700 !important;
+  font-weight: 850;
 }
 
 @media (max-width: 900px) {
@@ -530,6 +628,15 @@ button.payout-calendar-day {
 
   .chart-summary {
     align-items: flex-start;
+  }
+
+  .payout-history-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .payout-history-heading > p {
+    text-align: left;
   }
 
   .area-metrics {
