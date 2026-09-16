@@ -26,9 +26,13 @@ const controls = {
   payoutDateTotal: document.querySelector("#payoutDateTotal"),
   payoutTableBody: document.querySelector("#payoutTableBody"),
   payoutEmpty: document.querySelector("#payoutEmpty"),
-  payoutHistory: document.querySelector("#payoutHistory"),
+  payoutHistoryOverlay: document.querySelector("#payoutHistoryOverlay"),
+  payoutHistoryCloseButton: document.querySelector("#payoutHistoryCloseBtn"),
   payoutHistoryTitle: document.querySelector("#payoutHistoryTitle"),
   payoutHistoryMeta: document.querySelector("#payoutHistoryMeta"),
+  payoutHistoryPlate: document.querySelector("#payoutHistoryPlate"),
+  payoutHistoryTaxPeriod: document.querySelector("#payoutHistoryTaxPeriod"),
+  payoutHistoryCount: document.querySelector("#payoutHistoryCount"),
   payoutHistoryFlow: document.querySelector("#payoutHistoryFlow"),
   payoutHistoryTableBody: document.querySelector("#payoutHistoryTableBody")
 };
@@ -357,6 +361,22 @@ function renderPayoutPeriodTotals(period, byDate) {
   });
 }
 
+function getProductionStatusDate(record) {
+  const parts = String(record.source_text || "").split("|").map((part) => part.trim());
+  const statusDateSegment = parts.length >= 2 ? parts[parts.length - 2] : "";
+  const dates = statusDateSegment.match(/\d{2}\/\d{2}\/\d{4}/g) || [];
+  return dates.length >= 2 ? getIsoDate(dates[1]) : "";
+}
+
+function getProductionTaxPeriod(record) {
+  const storedDate = getIsoDate(record.tax_valid_date);
+  if (storedDate) return storedDate;
+
+  const parts = String(record.source_text || "").split("|").map((part) => part.trim());
+  const taxPeriodDates = (parts[3] || "").match(/\d{2}\/\d{2}\/\d{4}/g) || [];
+  return taxPeriodDates.length ? getIsoDate(taxPeriodDates[taxPeriodDates.length - 1]) : "";
+}
+
 function getPaymentHistoryForPlate(plateKey) {
   const stages = new Map();
 
@@ -421,12 +441,20 @@ function getHistoryDurationLabel(history, index) {
 }
 
 function clearPayoutHistory() {
-  if (controls.payoutHistory) controls.payoutHistory.hidden = true;
+  if (controls.payoutHistoryOverlay) controls.payoutHistoryOverlay.hidden = true;
+  document.body.classList.remove("payout-history-open");
   if (controls.payoutHistoryTableBody) controls.payoutHistoryTableBody.replaceChildren();
 }
 
+function closePayoutHistory() {
+  if (!selectedPayoutRecordId) return;
+  selectedPayoutRecordId = "";
+  clearPayoutHistory();
+  renderPayoutDetail();
+}
+
 function renderPayoutHistory() {
-  if (!controls.payoutHistory || !controls.payoutHistoryTableBody) return;
+  if (!controls.payoutHistoryOverlay || !controls.payoutHistoryTableBody) return;
   const selectedRecord = productionRecords.find((record) => String(record.id || "") === selectedPayoutRecordId);
   if (!selectedRecord) {
     clearPayoutHistory();
@@ -440,9 +468,14 @@ function renderPayoutHistory() {
     return;
   }
 
-  controls.payoutHistory.hidden = false;
+  const taxPeriodRecord = history.find((record) => getProductionTaxPeriod(record)) || selectedRecord;
+  controls.payoutHistoryOverlay.hidden = false;
+  document.body.classList.add("payout-history-open");
   setMetric(controls.payoutHistoryTitle, `Riwayat Surat ${selectedRecord.plate_number || plateKey}`);
   setMetric(controls.payoutHistoryMeta, `${formatNumber(history.length)} surat tercatat`);
+  setMetric(controls.payoutHistoryPlate, selectedRecord.plate_number || plateKey);
+  setMetric(controls.payoutHistoryTaxPeriod, formatDate(getProductionTaxPeriod(taxPeriodRecord)));
+  setMetric(controls.payoutHistoryCount, `${formatNumber(history.length)} surat`);
   setMetric(
     controls.payoutHistoryFlow,
     `Urutan surat: ${history.map((record) => String(record.letter_type || "-").toUpperCase()).join(" → ")}`
@@ -455,7 +488,9 @@ function renderPayoutHistory() {
     const values = [
       index + 1,
       String(record.letter_type || "-").toUpperCase(),
+      formatDate(getProductionTaxPeriod(record)),
       formatDate(record.recorded_date),
+      formatDate(getProductionStatusDate(record)),
       paid ? "Lunas" : "Belum lunas",
       paid ? formatDate(record.paid_date) : "-",
       getHistoryDurationLabel(history, index)
@@ -743,7 +778,7 @@ async function requestSupabase(path, options = {}) {
 async function fetchProductionRecords() {
   const fields = [
     "id", "plate_key", "plate_number", "letter_type", "owner_name", "is_paid", "paid_date",
-    "recorded_date", "tax_base_amount", "jasa_raharja", "late_penalty", "calculated_tax_potential", "source_text", "updated_at"
+    "recorded_date", "tax_valid_date", "tax_base_amount", "jasa_raharja", "late_penalty", "calculated_tax_potential", "source_text", "updated_at"
   ].join(",");
   const pageSize = 1000;
   const records = [];
@@ -789,7 +824,16 @@ async function loadAnalysis() {
 controls.recordedPeriodFilter?.addEventListener("change", renderAnalysis);
 controls.payoutPeriodFilter?.addEventListener("change", () => {
   selectedPayoutDate = "";
+  selectedPayoutRecordId = "";
+  clearPayoutHistory();
   renderPayoutCalendar();
 });
 controls.refreshButton?.addEventListener("click", loadAnalysis);
+controls.payoutHistoryCloseButton?.addEventListener("click", closePayoutHistory);
+controls.payoutHistoryOverlay?.addEventListener("click", (event) => {
+  if (event.target === controls.payoutHistoryOverlay) closePayoutHistory();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !controls.payoutHistoryOverlay?.hidden) closePayoutHistory();
+});
 loadAnalysis();

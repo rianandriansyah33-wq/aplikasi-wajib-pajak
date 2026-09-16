@@ -502,32 +502,92 @@ button.payout-calendar-day {
   margin: .8rem 0 0;
 }
 
-.payout-history {
-  border-top: 1px solid var(--analysis-border);
-  margin-top: 1.25rem;
-  padding-top: 1.15rem;
+.payout-history-overlay {
+  align-items: center;
+  background: rgba(15, 23, 42, .46);
+  display: grid;
+  inset: 0;
+  justify-items: center;
+  padding: 1rem;
+  position: fixed;
+  z-index: 70;
 }
 
-.payout-history-heading {
-  align-items: flex-end;
+.payout-history-overlay[hidden] {
+  display: none;
+}
+
+.payout-history-open {
+  overflow: hidden;
+}
+
+.payout-history-modal {
+  background: #fff;
+  border: 1px solid var(--analysis-border);
+  border-radius: 8px;
+  box-shadow: 0 26px 72px rgba(15, 23, 42, .24);
+  max-height: min(46rem, calc(100vh - 2rem));
+  overflow: auto;
+  width: min(72rem, 100%);
+}
+
+.payout-history-modal-top {
+  align-items: flex-start;
+  background: rgba(255, 255, 255, .97);
+  border-bottom: 1px solid #edf1f6;
   display: flex;
-  gap: 1rem;
+  gap: .9rem;
   justify-content: space-between;
+  padding: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
-.payout-history-heading h3 {
+.payout-history-modal-top h2 {
   color: var(--app-text);
-  font-size: 1rem;
-  font-weight: 850;
+  font-size: 1.15rem;
+  font-weight: 900;
   margin: 0;
 }
 
-.payout-history-heading > p {
+.payout-history-modal-top > div > p:last-child {
   color: var(--app-muted);
   font-size: .77rem;
   font-weight: 750;
-  margin: 0;
-  text-align: right;
+  margin: .3rem 0 0;
+}
+
+.payout-history-modal-body {
+  padding: 1rem;
+}
+
+.payout-history-summary {
+  display: grid;
+  gap: .75rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.payout-history-summary > div {
+  border-left: 3px solid #158f68;
+  display: grid;
+  gap: .2rem;
+  min-width: 0;
+  padding-left: .65rem;
+}
+
+.payout-history-summary span {
+  color: var(--app-muted);
+  font-size: .7rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.payout-history-summary strong {
+  color: var(--app-text);
+  font-size: .92rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
 }
 
 .payout-history-flow {
@@ -630,13 +690,13 @@ button.payout-calendar-day {
     align-items: flex-start;
   }
 
-  .payout-history-heading {
+  .payout-history-modal-top {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .payout-history-heading > p {
-    text-align: left;
+  .payout-history-summary {
+    grid-template-columns: 1fr;
   }
 
   .area-metrics {
