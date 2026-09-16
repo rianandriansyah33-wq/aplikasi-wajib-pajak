@@ -19,6 +19,7 @@ const controls = {
   paymentDurationDetail: document.querySelector("#paymentDurationDetail"),
   paymentDurationChart: document.querySelector("#paymentDurationChart"),
   payoutPeriodFilter: document.querySelector("#payoutPeriodFilter"),
+  payoutPeriodTotals: document.querySelector("#payoutPeriodTotals"),
   payoutCalendar: document.querySelector("#payoutCalendar"),
   payoutDateLabel: document.querySelector("#payoutDateLabel"),
   payoutDateCount: document.querySelector("#payoutDateCount"),
@@ -297,6 +298,70 @@ function createCalendarDayLabel(dateValue, entries) {
   return `${formatDate(dateValue)}: ${formatNumber(count)} pencairan, total ${formatCurrency(total)}.`;
 }
 
+function buildPayoutPeriodSummary(period, byDate) {
+  if (!/^\d{4}-\d{2}$/.test(String(period || ""))) return { totalCount: 0, totalNominal: 0, weeks: [] };
+  const [year, month] = period.split("-").map(Number);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+  const weekCount = Math.ceil((firstWeekday + daysInMonth) / 7);
+  let totalCount = 0;
+  let totalNominal = 0;
+
+  const weeks = Array.from({ length: weekCount }, (_, index) => {
+    const startDay = Math.max(1, index * 7 - firstWeekday + 1);
+    const endDay = Math.min(daysInMonth, (index + 1) * 7 - firstWeekday);
+    const entries = [];
+
+    for (let day = startDay; day <= endDay; day += 1) {
+      const dateValue = `${period}-${String(day).padStart(2, "0")}`;
+      entries.push(...(byDate.get(dateValue) || []));
+    }
+
+    const nominal = entries.reduce((sum, entry) => sum + entry.nominal, 0);
+    totalCount += entries.length;
+    totalNominal += nominal;
+    return { startDay, endDay, count: entries.length, nominal };
+  });
+
+  return { totalCount, totalNominal, weeks };
+}
+
+function renderPayoutPeriodTotals(period, byDate) {
+  if (!controls.payoutPeriodTotals) return;
+  controls.payoutPeriodTotals.replaceChildren();
+  const summary = buildPayoutPeriodSummary(period, byDate);
+  const createTotal = (title, detail, nominal, className = "") => {
+    const item = document.createElement("article");
+    item.className = `payout-period-total ${className}`.trim();
+    const titleElement = document.createElement("span");
+    titleElement.textContent = title;
+    const detailElement = document.createElement("small");
+    detailElement.textContent = detail;
+    const nominalElement = document.createElement("strong");
+    nominalElement.textContent = formatCurrency(nominal);
+    item.append(titleElement, detailElement, nominalElement);
+    return item;
+  };
+
+  controls.payoutPeriodTotals.appendChild(createTotal(
+    `Total ${formatPeriod(period)}`,
+    `${formatNumber(summary.totalCount)} pencairan`,
+    summary.totalNominal,
+    "payout-period-total-month"
+  ));
+
+  summary.weeks.forEach((week, index) => {
+    const range = week.startDay === week.endDay
+      ? `${week.startDay} ${formatPeriod(period).split(" ")[0]}`
+      : `${week.startDay}-${week.endDay} ${formatPeriod(period).split(" ")[0]}`;
+    controls.payoutPeriodTotals.appendChild(createTotal(
+      `Minggu ${index + 1}`,
+      `${range} | ${formatNumber(week.count)} pencairan`,
+      week.nominal
+    ));
+  });
+}
+
 function renderPayoutDetail() {
   if (!controls.payoutTableBody) return;
   const entries = payoutRecordsByDate.get(selectedPayoutDate) || [];
@@ -342,6 +407,7 @@ function renderPayoutCalendar() {
   if (!controls.payoutCalendar || !controls.payoutPeriodFilter) return;
   const period = controls.payoutPeriodFilter.value;
   payoutRecordsByDate = buildPayoutRecordsByDate(productionRecords, period);
+  renderPayoutPeriodTotals(period, payoutRecordsByDate);
   const dates = [...payoutRecordsByDate.keys()].sort();
   if (!dates.includes(selectedPayoutDate)) selectedPayoutDate = dates[dates.length - 1] || "";
   controls.payoutCalendar.replaceChildren();

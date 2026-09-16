@@ -283,6 +283,45 @@ body {
   padding-bottom: .25rem;
 }
 
+.payout-period-totals {
+  display: grid;
+  gap: .7rem;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  margin-top: 1rem;
+}
+
+.payout-period-total {
+  border-left: 3px solid #b9c8d7;
+  display: flex;
+  flex-direction: column;
+  gap: .14rem;
+  min-width: 0;
+  padding: .1rem 0 .1rem .68rem;
+}
+
+.payout-period-total-month {
+  border-left-color: #158f68;
+}
+
+.payout-period-total span {
+  color: var(--app-text);
+  font-size: .78rem;
+  font-weight: 850;
+}
+
+.payout-period-total small {
+  color: var(--app-muted);
+  font-size: .7rem;
+  font-weight: 700;
+}
+
+.payout-period-total strong {
+  color: #16734b;
+  font-size: .88rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
 .payout-calendar-weekday {
   color: var(--app-muted);
   font-size: .72rem;
@@ -502,6 +541,10 @@ button.payout-calendar-day {
     width: 100%;
   }
 
+  .payout-period-totals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .payout-detail-summary {
     align-items: flex-start;
     text-align: left;
@@ -517,5 +560,9 @@ button.payout-calendar-day {
   .payment-chart-panel,
   .payout-calendar-panel {
     padding: 0.8rem;
+  }
+
+  .payout-period-totals {
+    grid-template-columns: 1fr;
   }
 }
