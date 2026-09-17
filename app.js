@@ -3820,11 +3820,16 @@ controls.clearAllBtn.addEventListener("click", async function () {
   showToast(clearedReminderCount ? "Semua data dan riwayat WA dihapus." : "Semua data dihapus.");
 });
 
-controls.exportJsonBtn.addEventListener("click", exportJsonData);
+if (controls.exportJsonBtn) {
+  controls.exportJsonBtn.addEventListener("click", exportJsonData);
+}
 
-controls.exportCsvBtn.addEventListener("click", exportCsvData);
+if (controls.exportCsvBtn) {
+  controls.exportCsvBtn.addEventListener("click", exportCsvData);
+}
 
-controls.importFile.addEventListener("change", async function (event) {
+if (controls.importFile) {
+  controls.importFile.addEventListener("change", async function (event) {
   const file = event.target.files[0];
   if (!file) return;
   try {
@@ -3877,7 +3882,8 @@ controls.importFile.addEventListener("change", async function (event) {
   } finally {
     controls.importFile.value = "";
   }
-});
+  });
+}
 
 formatNominalInput();
 updateProductionSummary();

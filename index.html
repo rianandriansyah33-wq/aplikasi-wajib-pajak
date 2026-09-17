@@ -34,18 +34,6 @@
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-7"/><path d="M15 6h4v4"/></svg>
               Analisis
             </a>
-            <button class="btn btn-light ghost-button" id="exportJsonBtn" type="button" title="Export JSON">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></svg>
-              JSON
-            </button>
-            <button class="btn btn-light ghost-button" id="exportCsvBtn" type="button" title="Export CSV">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></svg>
-              CSV
-            </button>
-            <label class="btn btn-light ghost-button file-button" title="Import JSON atau CSV" for="importFile">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M5 4h14"/></svg>
-              Import
-            </label>
           </div>
 
           <div class="mobile-actions d-xl-none">
@@ -70,24 +58,10 @@
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h8V3H3v10Z"/><path d="M13 21h8V11h-8v10Z"/><path d="M13 3h8v6h-8V3Z"/><path d="M3 21h8v-6H3v6Z"/></svg>
                 Dashboard
               </button>
-              <button class="mobile-menu-item" id="mobileExportJsonBtn" type="button">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 20h14"/></svg>
-                Export JSON
-              </button>
-              <button class="mobile-menu-item" id="mobileExportCsvBtn" type="button">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M4 6h16"/><path d="M4 10h16"/></svg>
-                Export CSV
-              </button>
-              <button class="mobile-menu-item" id="mobileImportBtn" type="button">
-                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21V9m0 0 4 4m-4-4-4 4"/><path d="M5 4h14"/></svg>
-                Import Data
-              </button>
             </div>
           </div>
         </div>
       </header>
-
-      <input id="importFile" class="import-file-input" type="file" accept="application/json,.json,text/csv,.csv" />
 
       <main>
         <section class="dashboard-section card border-0 shadow-sm mb-3" id="dashboardSection" aria-label="Dashboard ringkasan data">
@@ -492,6 +466,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="config.js?v=20260910-1235"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="app.js?v=20260917-1200"></script>
+    <script src="app.js?v=20260917-1230"></script>
   </body>
 </html>
