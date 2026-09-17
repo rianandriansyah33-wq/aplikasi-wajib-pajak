@@ -18,7 +18,6 @@ const controls = {
   averagePaymentDuration: document.querySelector("#averagePaymentDuration"),
   paymentDurationDetail: document.querySelector("#paymentDurationDetail"),
   paymentDurationChart: document.querySelector("#paymentDurationChart"),
-  payoutPeriodFilter: document.querySelector("#payoutPeriodFilter"),
   payoutPeriodTotals: document.querySelector("#payoutPeriodTotals"),
   payoutCalendar: document.querySelector("#payoutCalendar"),
   payoutDateLabel: document.querySelector("#payoutDateLabel"),
@@ -172,25 +171,6 @@ function populateRecordedPeriodFilter() {
   });
 
   controls.recordedPeriodFilter.value = periods.includes(currentValue) ? currentValue : (periods[0] || "");
-}
-
-function populatePayoutPeriodFilter(records) {
-  if (!controls.payoutPeriodFilter) return;
-  const currentValue = controls.payoutPeriodFilter.value;
-  const periods = [...new Set((records || [])
-    .filter(isExplicitlyPaid)
-    .map(getPaidPeriod)
-    .filter(Boolean))].sort().reverse();
-  controls.payoutPeriodFilter.innerHTML = "";
-
-  periods.forEach((period) => {
-    const option = document.createElement("option");
-    option.value = period;
-    option.textContent = formatPeriod(period);
-    controls.payoutPeriodFilter.appendChild(option);
-  });
-
-  controls.payoutPeriodFilter.value = periods.includes(currentValue) ? currentValue : (periods[0] || "");
 }
 
 function buildDailyPaymentPattern(payoutsByDate, selectedPeriod) {
@@ -675,8 +655,8 @@ function renderPayoutDetail() {
 }
 
 function renderPayoutCalendar() {
-  if (!controls.payoutCalendar || !controls.payoutPeriodFilter) return;
-  const period = controls.payoutPeriodFilter.value;
+  if (!controls.payoutCalendar || !controls.recordedPeriodFilter) return;
+  const period = controls.recordedPeriodFilter.value;
   payoutRecordsByDate = buildPayoutRecordsByDate(productionRecords, period);
   renderPayoutPeriodTotals(period, payoutRecordsByDate);
   const dates = [...payoutRecordsByDate.keys()].sort();
@@ -852,7 +832,7 @@ function renderAnalysis() {
   const vehicles = createMonthlyVehicles(productionRecords, selectedPeriod);
   const paymentDurations = buildPaymentDurations(productionRecords);
   renderPayoutCalendar();
-  const dailyPayments = buildDailyPaymentPattern(payoutRecordsByDate, controls.payoutPeriodFilter.value);
+  const dailyPayments = buildDailyPaymentPattern(payoutRecordsByDate, selectedPeriod);
   renderMetrics(vehicles, dailyPayments);
   renderDailyPaymentChart(dailyPayments);
   renderPaymentDuration(paymentDurations);
@@ -911,7 +891,6 @@ async function loadAnalysis() {
   try {
     productionRecords = await fetchProductionRecords();
     populateRecordedPeriodFilter();
-    populatePayoutPeriodFilter(productionRecords);
     setSource();
     renderAnalysis();
     setStatus("DATABASE: ANALISIS TERHUBUNG", "success");
@@ -924,16 +903,11 @@ async function loadAnalysis() {
   }
 }
 
-controls.recordedPeriodFilter?.addEventListener("change", renderAnalysis);
-controls.payoutPeriodFilter?.addEventListener("change", () => {
+controls.recordedPeriodFilter?.addEventListener("change", () => {
   selectedPayoutDate = "";
   selectedPayoutRecordId = "";
   clearPayoutHistory();
-  renderPayoutCalendar();
-  const vehicles = createMonthlyVehicles(productionRecords, controls.recordedPeriodFilter.value);
-  const dailyPayments = buildDailyPaymentPattern(payoutRecordsByDate, controls.payoutPeriodFilter.value);
-  renderMetrics(vehicles, dailyPayments);
-  renderDailyPaymentChart(dailyPayments);
+  renderAnalysis();
 });
 controls.refreshButton?.addEventListener("click", loadAnalysis);
 controls.payoutHistoryCloseButton?.addEventListener("click", closePayoutHistory);

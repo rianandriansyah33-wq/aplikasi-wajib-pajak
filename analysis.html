@@ -32,14 +32,14 @@
           <div class="analysis-heading">
             <div>
               <p class="section-eyebrow">ANALISIS BULANAN</p>
-              <h1 id="analysisTitle">Ringkasan Pelunasan Berdasarkan Tanggal Rekam</h1>
+              <h1 id="analysisTitle">Ringkasan Pelunasan Periode Bulanan</h1>
             </div>
             <p class="analysis-source" id="analysisSource">Memuat data Buku Produksi SIAPP...</p>
           </div>
 
           <div class="analysis-toolbar" aria-label="Filter analisis">
             <label for="analysisRecordedPeriodFilter">
-              <span>Bulan Tanggal Rekam</span>
+              <span>Bulan Analisis</span>
               <select class="form-select" id="analysisRecordedPeriodFilter"></select>
             </label>
           </div>
@@ -79,7 +79,7 @@
               <span id="peakPaymentDetail">Menunggu data pembayaran</span>
             </div>
           </div>
-          <p class="chart-description">Grafik dan kalender memakai dasar yang sama: satu nopol dihitung satu kali untuk setiap tanggal bayar.</p>
+          <p class="chart-description">Grafik dan kalender mengikuti Bulan Analisis: satu nopol dihitung satu kali untuk setiap tanggal bayar.</p>
           <div class="chart-wrap"><canvas id="dailyPaymentChart"></canvas></div>
         </section>
 
@@ -104,12 +104,8 @@
               <p class="section-eyebrow">KALENDER PENCAIRAN</p>
               <h2 id="payoutCalendarTitle">Pencairan per Tanggal Bayar</h2>
             </div>
-            <label class="payout-period-control" for="payoutPeriodFilter">
-              <span>Bulan Tanggal Bayar</span>
-              <select class="form-select" id="payoutPeriodFilter"></select>
-            </label>
           </div>
-          <p class="chart-description">Seluruh pelunasan Buku Produksi SIAPP dihitung secara global. Pilih tanggal untuk melihat rincian dan urutan nominal terbesar.</p>
+          <p class="chart-description">Pelunasan dalam Bulan Analisis dihitung secara global. Pilih tanggal untuk melihat rincian dan urutan nominal terbesar.</p>
           <div class="payout-period-totals" id="payoutPeriodTotals" aria-live="polite"></div>
           <div class="payout-calendar" id="payoutCalendar" aria-label="Kalender pencairan"></div>
 
@@ -192,6 +188,6 @@
 
     <script src="config.js?v=20260910-1235"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
-  <script src="analysis.js?v=20260917-0845"></script>
+  <script src="analysis.js?v=20260917-0915"></script>
   </body>
 </html>
