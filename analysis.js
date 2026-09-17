@@ -34,6 +34,7 @@ const controls = {
   payoutHistoryTaxPeriod: document.querySelector("#payoutHistoryTaxPeriod"),
   payoutHistoryCount: document.querySelector("#payoutHistoryCount"),
   payoutHistoryFlow: document.querySelector("#payoutHistoryFlow"),
+  payoutHistoryTimeline: document.querySelector("#payoutHistoryTimeline"),
   payoutHistoryTableBody: document.querySelector("#payoutHistoryTableBody")
 };
 
@@ -440,9 +441,110 @@ function getHistoryDurationLabel(history, index) {
   return "Menunggu tahap atau pelunasan berikutnya";
 }
 
+function getHistoryTimelineEvents(history) {
+  const paymentRecordsByDate = new Map();
+  const events = history.map((record) => ({
+    type: "letter",
+    date: getIsoDate(record.recorded_date),
+    record
+  }));
+
+  history.forEach((record) => {
+    const paidDate = isExplicitlyPaid(record) ? getIsoDate(record.paid_date) : "";
+    if (!paidDate) return;
+
+    const existing = paymentRecordsByDate.get(paidDate);
+    if (!existing || getDateValue(record.recorded_date) >= getDateValue(existing.recorded_date)) {
+      paymentRecordsByDate.set(paidDate, record);
+    }
+  });
+
+  paymentRecordsByDate.forEach((record, paidDate) => {
+    events.push({ type: "payment", date: paidDate, record });
+  });
+
+  return events.sort((left, right) => {
+    const dateDifference = getDateValue(left.date) - getDateValue(right.date);
+    if (dateDifference) return dateDifference;
+    if (left.type === right.type) return 0;
+    return left.type === "letter" ? -1 : 1;
+  });
+}
+
+function getTimelineDurationLabel(event, nextEvent) {
+  const target = nextEvent.type === "payment"
+    ? "lunas"
+    : String(nextEvent.record.letter_type || "surat berikutnya").toUpperCase();
+  const days = getDaysBetween(event.date, nextEvent.date);
+  return days === null ? `Menuju ${target}` : `${days} hari ke ${target}`;
+}
+
+function createTimelineDetail(label, value) {
+  const detail = document.createElement("p");
+  const detailLabel = document.createElement("span");
+  const detailValue = document.createElement("strong");
+  detailLabel.textContent = label;
+  detailValue.textContent = value;
+  detail.append(detailLabel, detailValue);
+  return detail;
+}
+
+function renderPayoutHistoryTimeline(history) {
+  if (!controls.payoutHistoryTimeline) return;
+  controls.payoutHistoryTimeline.replaceChildren();
+
+  const events = getHistoryTimelineEvents(history);
+  if (!events.length) return;
+
+  events.forEach((event, index) => {
+    const isPayment = event.type === "payment";
+    const step = document.createElement("article");
+    step.className = `history-timeline-step ${isPayment ? "is-payment" : "is-letter"}`;
+
+    const marker = document.createElement("span");
+    marker.className = "history-timeline-marker";
+    marker.setAttribute("aria-hidden", "true");
+
+    const card = document.createElement("div");
+    card.className = "history-timeline-card";
+
+    const category = document.createElement("span");
+    category.className = "history-timeline-category";
+    category.textContent = isPayment ? "Pelunasan" : "Surat segera";
+
+    const title = document.createElement("strong");
+    title.className = "history-timeline-title";
+    title.textContent = isPayment ? "Lunas" : String(event.record.letter_type || "-").toUpperCase();
+
+    const detailList = document.createElement("div");
+    detailList.className = "history-timeline-details";
+    if (isPayment) {
+      detailList.appendChild(createTimelineDetail("Tgl Bayar", formatDate(event.date)));
+    } else {
+      detailList.append(
+        createTimelineDetail("Tgl Rekam", formatDate(event.record.recorded_date)),
+        createTimelineDetail("Tgl Status", formatDate(getProductionStatusDate(event.record)))
+      );
+    }
+
+    card.append(category, title, detailList);
+    const nextEvent = events[index + 1];
+    if (nextEvent) {
+      const duration = document.createElement("p");
+      duration.className = "history-timeline-duration";
+      duration.textContent = getTimelineDurationLabel(event, nextEvent);
+      card.appendChild(duration);
+    }
+
+    step.append(marker, card);
+    controls.payoutHistoryTimeline.appendChild(step);
+  });
+}
+
 function clearPayoutHistory() {
   if (controls.payoutHistoryOverlay) controls.payoutHistoryOverlay.hidden = true;
   document.body.classList.remove("payout-history-open");
+  if (controls.payoutHistoryTimeline) controls.payoutHistoryTimeline.replaceChildren();
   if (controls.payoutHistoryTableBody) controls.payoutHistoryTableBody.replaceChildren();
 }
 
@@ -480,6 +582,7 @@ function renderPayoutHistory() {
     controls.payoutHistoryFlow,
     `Urutan surat: ${history.map((record) => String(record.letter_type || "-").toUpperCase()).join(" → ")}`
   );
+  renderPayoutHistoryTimeline(history);
   controls.payoutHistoryTableBody.replaceChildren();
 
   history.forEach((record, index) => {
