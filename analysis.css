@@ -10,91 +10,26 @@ body {
 }
 
 .app-shell {
-  max-width: 1440px;
+  max-width: 1520px;
   padding: 0 1rem 2rem;
 }
 
-.app-header {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin: 0 auto 1rem;
-  max-width: 1360px;
-  padding: 0.75rem 1rem;
+.sync-status[data-state="loading"] {
+  border-color: #efd08a;
+  background: #fff8e8;
+  color: #9a6700;
 }
 
-.brand {
-  color: var(--app-text);
-  display: inline-flex;
-  gap: 0.7rem;
-  min-width: 0;
-  text-decoration: none;
+.sync-status[data-state="error"] {
+  border-color: #f0c7c2;
+  background: var(--app-danger-soft);
+  color: var(--app-danger);
 }
 
-.brand-mark {
-  align-items: center;
-  background: #f3faf9;
-  border: 1px solid #b7dfdb;
-  border-radius: 12px;
-  color: var(--app-primary);
-  display: inline-flex;
-  flex: 0 0 42px;
-  font-size: 0.74rem;
-  font-weight: 800;
-  height: 42px;
-  justify-content: center;
-}
-
-.brand-title,
-.brand-subtitle {
-  display: block;
-}
-
-.brand-title {
-  font-size: 1.15rem;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.brand-subtitle {
-  color: var(--app-primary);
-  font-size: 0.68rem;
-  font-weight: 800;
-  margin-top: 0.22rem;
-}
-
-.brand-subtitle[data-state="loading"] { color: #9a6700; }
-.brand-subtitle[data-state="error"] { color: var(--app-danger); }
-
-.analysis-actions {
-  align-items: center;
-  display: flex;
-  gap: 0.45rem;
-}
-
-.analysis-actions .btn {
-  align-items: center;
-  border-color: var(--analysis-border);
-  color: var(--app-text);
-  display: inline-flex;
-  font-size: 0.85rem;
-  font-weight: 750;
-  min-height: 40px;
-  padding: 0.45rem 0.8rem;
-}
-
-.analysis-actions .btn:hover,
-.analysis-actions .btn:focus-visible {
-  background: #eff8f7;
-  border-color: #8bc9c2;
-  color: var(--app-primary);
-}
-
-.icon-button {
-  font-size: 1.2rem !important;
-  justify-content: center;
-  padding: 0.35rem !important;
-  width: 40px;
+.sync-status[data-state="success"] {
+  border-color: #c9ead8;
+  background: var(--app-success-soft);
+  color: var(--app-success);
 }
 
 .analysis-main {
@@ -795,24 +730,10 @@ button.payout-calendar-day {
     padding: 0 0.55rem 1rem;
   }
 
-  .app-header,
   .analysis-heading,
   .chart-heading {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .app-header {
-    gap: 0.75rem;
-  }
-
-  .analysis-actions {
-    width: 100%;
-  }
-
-  .analysis-actions .btn:first-child {
-    flex: 1;
-    justify-content: center;
   }
 
   .analysis-source,
@@ -911,10 +832,6 @@ button.payout-calendar-day {
 }
 
 @media (max-width: 430px) {
-  .brand-title {
-    font-size: 1rem;
-  }
-
   .analysis-overview,
   .payment-chart-panel,
   .payout-calendar-panel {

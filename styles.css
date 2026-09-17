@@ -150,6 +150,31 @@ h3 {
   box-shadow: 0 8px 22px rgba(15, 23, 42, .06);
 }
 
+.app-mark .icon {
+  width: 1.18rem;
+  height: 1.18rem;
+}
+
+.app-mark-analysis {
+  border-color: #c7d7f6;
+  background: #eef5ff;
+  color: #2358b8;
+}
+
+.app-mark-siapp {
+  border-color: #b7dfdb;
+  background: #f3faf9;
+  color: var(--app-primary);
+}
+
+.brand-heading {
+  display: block;
+  color: var(--app-text);
+  font-size: 1.1rem;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
 .eyebrow {
   margin: 0 0 .25rem;
   color: var(--app-primary);
@@ -224,6 +249,12 @@ h3 {
   color: var(--app-text);
   font-size: .86rem;
   box-shadow: 0 8px 18px rgba(15, 23, 42, .05);
+}
+
+.ghost-button.is-active {
+  border-color: #b7dfdb;
+  background: #eff9f5;
+  color: var(--app-primary);
 }
 
 .primary-button {
@@ -342,6 +373,12 @@ h3 {
   border-color: var(--app-line);
   background: #f8fafc;
   outline: none;
+}
+
+.mobile-menu-item.is-active {
+  border-color: #b7dfdb;
+  background: #eff9f5;
+  color: var(--app-primary);
 }
 
 .import-file-input {
