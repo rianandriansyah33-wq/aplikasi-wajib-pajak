@@ -5,6 +5,7 @@ const PRODUCTION_SYNC_META_KEY = "wajibPajakProductionLastSyncAt";
 const PRODUCTION_SUMMARY_STORAGE_KEY = "wajibPajakProductionSummary";
 const PENDING_UPSERT_STORAGE_KEY = "wajibPajakPendingRemoteUpserts";
 const PENDING_DELETE_STORAGE_KEY = "wajibPajakPendingRemoteDeletes";
+const PENDING_WHATSAPP_REMINDER_DELETE_STORAGE_KEY = "wajibPajakPendingWhatsappReminderDeletes";
 const MAX_LOCAL_PRODUCTION_CACHE_BYTES = 1500000;
 const REMOTE_REFRESH_INTERVAL_MS = 15000;
 const REMOTE_PRODUCTION_REFRESH_INTERVAL_MS = 300000;
@@ -62,6 +63,8 @@ const controls = {
   importFile: document.querySelector("#importFile"),
   duplicateCheckResult: document.querySelector("#duplicateCheckResult"),
   productionCheckResult: document.querySelector("#productionCheckResult"),
+  whatsappReminderResetControl: document.querySelector("#whatsappReminderResetControl"),
+  resetWhatsappReminders: document.querySelector("#resetWhatsappReminders"),
   siappAutofillPanel: document.querySelector("#siappAutofillPanel"),
   autoLetterType: document.querySelector("#autoLetterType"),
   autoOwnerName: document.querySelector("#autoOwnerName"),
@@ -128,11 +131,13 @@ let productionLastSyncAt = loadProductionLastSyncAt();
 let productionSummarySnapshot = loadProductionSummarySnapshot();
 let pendingRemoteUpserts = loadPendingRemoteUpserts().map(normalizeRecord);
 let pendingRemoteDeletes = loadPendingRemoteDeletes();
+let pendingWhatsappReminderDeletes = loadPendingWhatsappReminderDeletes();
 let isRemoteRefreshing = false;
 let isProductionRefreshing = false;
 let isProductionSummaryRefreshing = false;
 let isWhatsappReminderRefreshing = false;
 let isWhatsappReminderSaving = false;
+let isPendingWhatsappReminderDeleteSyncing = false;
 let isPendingRemoteSyncing = false;
 let remoteMutationCount = 0;
 let remoteAutoRefreshStarted = false;
@@ -323,6 +328,20 @@ function loadPendingRemoteDeletes() {
 
 function savePendingRemoteDeletes() {
   localStorage.setItem(PENDING_DELETE_STORAGE_KEY, JSON.stringify(pendingRemoteDeletes));
+}
+
+function loadPendingWhatsappReminderDeletes() {
+  try {
+    return (JSON.parse(localStorage.getItem(PENDING_WHATSAPP_REMINDER_DELETE_STORAGE_KEY)) || [])
+      .map(String)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function savePendingWhatsappReminderDeletes() {
+  localStorage.setItem(PENDING_WHATSAPP_REMINDER_DELETE_STORAGE_KEY, JSON.stringify(pendingWhatsappReminderDeletes));
 }
 
 function createProductionIndex(items) {
@@ -630,6 +649,13 @@ async function requestSupabaseDatabase(action, payload) {
     });
     return { ok: true, reminders: saved.map(fromSupabaseWhatsappReminderRow) };
   }
+  if (action === "deleteWhatsappReminders") {
+    const ids = (payload.ids || []).filter(Boolean);
+    if (!ids.length) return { ok: true };
+    const query = "whatsapp_reminders?id=in.(" + ids.map(encodeURIComponent).join(",") + ")";
+    await requestSupabaseRest(query, { method: "DELETE", headers: { Prefer: "return=minimal" } });
+    return { ok: true };
+  }
   if (action === "upsertProduction") {
     const rows = (payload.productionRecords || []).map(toSupabaseProductionRow);
     if (!rows.length) return { ok: true, productionRecords: [] };
@@ -714,15 +740,52 @@ async function saveRemoteWhatsappReminders(items) {
   return Array.isArray(result.reminders) ? result.reminders.map(normalizeWhatsappReminder) : [];
 }
 
+async function deleteRemoteWhatsappReminders(ids) {
+  if (!isSupabaseDatabase() || !ids.length) return;
+  await requestDatabase("deleteWhatsappReminders", { ids: ids });
+}
+
+function queueWhatsappReminderDeletes(ids) {
+  const knownIds = new Set(pendingWhatsappReminderDeletes);
+  (ids || []).filter(Boolean).forEach(function (id) {
+    knownIds.add(String(id));
+  });
+  pendingWhatsappReminderDeletes = Array.from(knownIds);
+  savePendingWhatsappReminderDeletes();
+}
+
+async function syncPendingWhatsappReminderDeletes() {
+  if (!isSupabaseDatabase() || !pendingWhatsappReminderDeletes.length || isPendingWhatsappReminderDeleteSyncing) return;
+
+  const deleteIds = pendingWhatsappReminderDeletes.slice();
+  isPendingWhatsappReminderDeleteSyncing = true;
+  try {
+    const deleteChunks = chunkItems(deleteIds, 50);
+    for (let index = 0; index < deleteChunks.length; index += 1) {
+      await deleteRemoteWhatsappReminders(deleteChunks[index]);
+    }
+    const deletedIdSet = new Set(deleteIds);
+    pendingWhatsappReminderDeletes = pendingWhatsappReminderDeletes.filter(function (id) {
+      return !deletedIdSet.has(id);
+    });
+    savePendingWhatsappReminderDeletes();
+  } catch (error) {
+    console.warn("Riwayat reminder WhatsApp belum dapat dihapus dari database.", error);
+  } finally {
+    isPendingWhatsappReminderDeleteSyncing = false;
+  }
+}
+
 function mergeWhatsappReminders(remoteReminders) {
+  const deletedIds = new Set(pendingWhatsappReminderDeletes);
   const remindersById = new Map();
   (remoteReminders || []).forEach(function (reminder) {
     const normalized = normalizeWhatsappReminder(reminder);
-    remindersById.set(normalized.id, normalized);
+    if (!deletedIds.has(normalized.id)) remindersById.set(normalized.id, normalized);
   });
   whatsappReminders.forEach(function (reminder) {
     const normalized = normalizeWhatsappReminder(reminder);
-    if (!remindersById.has(normalized.id)) remindersById.set(normalized.id, normalized);
+    if (!deletedIds.has(normalized.id) && !remindersById.has(normalized.id)) remindersById.set(normalized.id, normalized);
   });
   return Array.from(remindersById.values()).sort(function (first, second) {
     return String(first.sentAt || "").localeCompare(String(second.sentAt || "")) || String(first.id || "").localeCompare(String(second.id || ""));
@@ -736,6 +799,7 @@ async function refreshWhatsappReminders(options) {
 
   isWhatsappReminderRefreshing = true;
   try {
+    await syncPendingWhatsappReminderDeletes();
     const remoteReminders = await fetchRemoteWhatsappReminders();
     const remoteIds = new Set(remoteReminders.map(function (reminder) { return reminder.id; }));
     const localOnly = whatsappReminders.filter(function (reminder) {
@@ -1649,15 +1713,49 @@ function getPlateKey(value) {
 }
 
 function getWhatsappReminderHistory(record) {
+  const taxpayerId = String(record && record.id || "");
   const plateKey = getPlateKey(record && record.plateNumber);
-  if (!plateKey) return [];
+  if (!taxpayerId && !plateKey) return [];
   return whatsappReminders
     .filter(function (item) {
-      return item.plateKey === plateKey;
+      // Reminder follows the saved card, not merely its plate number. A newly
+      // entered card with a reused nopol therefore starts from WA #1.
+      return taxpayerId ? item.taxpayerId === taxpayerId : item.plateKey === plateKey;
     })
     .sort(function (first, second) {
       return String(first.sentAt || "").localeCompare(String(second.sentAt || "")) || String(first.id || "").localeCompare(String(second.id || ""));
     });
+}
+
+function clearWhatsappReminderHistory(recordsToClear) {
+  const sourceRecords = Array.isArray(recordsToClear) ? recordsToClear : [recordsToClear];
+  const taxpayerIds = new Set(sourceRecords.map(function (record) {
+    return String(record && record.id || "");
+  }).filter(Boolean));
+  const plateKeys = new Set(sourceRecords.map(function (record) {
+    return getPlateKey(record && record.plateNumber);
+  }).filter(Boolean));
+
+  const deletedReminders = whatsappReminders.filter(function (reminder) {
+    return taxpayerIds.has(reminder.taxpayerId) || plateKeys.has(reminder.plateKey);
+  });
+  if (!deletedReminders.length) return 0;
+
+  const deletedIds = new Set(deletedReminders.map(function (reminder) {
+    return reminder.id;
+  }));
+  whatsappReminders = whatsappReminders.filter(function (reminder) {
+    return !deletedIds.has(reminder.id);
+  });
+  saveWhatsappReminders();
+  lastWhatsappReminderRefreshAt = 0;
+
+  if (isSupabaseDatabase()) {
+    queueWhatsappReminderDeletes(Array.from(deletedIds));
+    syncPendingWhatsappReminderDeletes();
+  }
+
+  return deletedIds.size;
 }
 
 function getWhatsappReminderSummary(record) {
@@ -2330,9 +2428,21 @@ function readForm() {
   });
 }
 
+function updateWhatsappReminderResetControl() {
+  if (!controls.whatsappReminderResetControl || !controls.resetWhatsappReminders) return;
+
+  const originalPhone = normalizeWhatsapp(form.dataset.originalPhone || "");
+  const currentPhone = normalizeWhatsapp(fields.phone.value);
+  const phoneChanged = Boolean(fields.recordId.value && currentPhone && originalPhone !== currentPhone);
+
+  controls.whatsappReminderResetControl.hidden = !phoneChanged;
+  if (!phoneChanged) controls.resetWhatsappReminders.checked = false;
+}
+
 function fillForm(record) {
   openInputForm();
   fields.recordId.value = record.id;
+  form.dataset.originalPhone = normalizeWhatsapp(record.phone);
   if (fields.letterType) fields.letterType.value = record.letterType;
   if (fields.taxValidDate) fields.taxValidDate.value = record.taxValidDate || "";
   fields.plateNumber.value = record.plateNumber;
@@ -2343,6 +2453,7 @@ function fillForm(record) {
     fields.taxPotential.dataset.siappPlateKey = "";
   }
   fields.phone.value = formatWhatsappLocal(record.phone);
+  if (controls.resetWhatsappReminders) controls.resetWhatsappReminders.checked = false;
   fields.status.value = record.status;
   if (fields.fieldVisitDate) {
     fields.fieldVisitDate.value = formatDateForInput(record.fieldVisitDate);
@@ -2353,12 +2464,14 @@ function fillForm(record) {
   updateDuplicateCheckPreview();
   updateProductionCheckPreview();
   updateSiappAutofillPanel();
+  updateWhatsappReminderResetControl();
   fields.plateNumber.focus();
 }
 
 function resetForm() {
   form.reset();
   clearFormSyncPending();
+  delete form.dataset.originalPhone;
   fields.recordId.value = "";
   fields.status.value = "Belum bayar";
   if (fields.letterType) fields.letterType.value = "";
@@ -2374,10 +2487,12 @@ function resetForm() {
     fields.fieldVisitDate.dataset.previousDigits = "";
   }
   if (fields.fieldVisitNote) fields.fieldVisitNote.value = "";
+  if (controls.resetWhatsappReminders) controls.resetWhatsappReminders.checked = false;
   controls.formTitle.textContent = "Tambah Wajib Pajak";
   updateDuplicateCheckPreview();
   updateProductionCheckPreview();
   updateSiappAutofillPanel();
+  updateWhatsappReminderResetControl();
 }
 
 function getFilteredRecords() {
@@ -2837,6 +2952,21 @@ function renderRecordDetail(record) {
     markWhatsappReminderSent(record);
   });
 
+  const resetReminderButton = document.createElement("button");
+  resetReminderButton.className = "secondary-button reset-reminder-button";
+  resetReminderButton.type = "button";
+  resetReminderButton.textContent = "Reset WA";
+  resetReminderButton.title = "Hapus riwayat reminder agar kembali ke WA #1";
+  resetReminderButton.disabled = !whatsappReminder.count;
+  resetReminderButton.addEventListener("click", function () {
+    const approved = confirm("Reset " + whatsappReminder.count + " reminder WhatsApp untuk " + record.plateNumber + "? Reminder berikutnya akan kembali ke WA #1.");
+    if (!approved) return;
+    const clearedCount = clearWhatsappReminderHistory(record);
+    if (!clearedCount) return;
+    render();
+    showToast("Riwayat WA direset. Reminder berikutnya dimulai dari WA #1.", "connection-success");
+  });
+
   const editButton = document.createElement("button");
   editButton.className = "secondary-button";
   editButton.type = "button";
@@ -2855,7 +2985,7 @@ function renderRecordDetail(record) {
     deleteRecord(record.id);
   });
 
-  actions.append(whatsappButton, reminderButton, editButton, deleteButton);
+  actions.append(whatsappButton, reminderButton, resetReminderButton, editButton, deleteButton);
   controls.detailContent.append(summaryBlock, detailGrid, followUpSection, whatsappReminderSection, actions);
 }
 
@@ -3034,7 +3164,8 @@ function showToast(message, tone) {
   }, 2400);
 }
 
-async function upsertRecord(record) {
+async function upsertRecord(record, options) {
+  const settings = options || {};
   const originalId = record.id;
   const duplicateRecord = findExistingRecordByPlate(record.plateNumber, record.id);
   let duplicateMessage = "";
@@ -3072,6 +3203,9 @@ async function upsertRecord(record) {
   if (hasRemoteDatabase()) {
     fields.recordId.value = record.id;
     form.dataset.pendingRecordId = record.id;
+    form.dataset.originalPhone = normalizeWhatsapp(record.phone);
+    if (controls.resetWhatsappReminders) controls.resetWhatsappReminders.checked = false;
+    updateWhatsappReminderResetControl();
     idsToDeleteAfterMerge.forEach(queueRemoteDelete);
     queueRemoteUpsert(record);
     syncPendingRemoteMutations()
@@ -3082,12 +3216,14 @@ async function upsertRecord(record) {
         console.warn("Data DL belum dapat disinkronkan.", error);
       });
     scheduleRemoteRetry(3000);
-    showToast(duplicateMessage || (isUpdate ? "Data diperbarui. Sedang sinkron ke database." : "Data ditambahkan. Sedang sinkron ke database."));
+    const remoteMessage = duplicateMessage || (isUpdate ? "Data diperbarui. Sedang sinkron ke database." : "Data ditambahkan. Sedang sinkron ke database.");
+    showToast(settings.whatsappReminderReset ? remoteMessage + " Reminder WA dimulai ulang dari WA #1." : remoteMessage);
     return;
   }
 
   resetForm();
-  showToast(duplicateMessage || (isUpdate ? "Data wajib pajak diperbarui." : "Data wajib pajak ditambahkan."));
+  const localMessage = duplicateMessage || (isUpdate ? "Data wajib pajak diperbarui." : "Data wajib pajak ditambahkan.");
+  showToast(settings.whatsappReminderReset ? localMessage + " Reminder WA dimulai ulang dari WA #1." : localMessage);
 }
 
 async function updateStatus(id, status) {
@@ -3118,6 +3254,7 @@ async function deleteRecord(id) {
   if (!record) return;
   const approved = confirm("Hapus data " + record.ownerName + " - " + record.plateNumber + "?");
   if (!approved) return;
+  const clearedReminderCount = clearWhatsappReminderHistory(record);
   records = records.filter(function (item) {
     return item.id !== id;
   });
@@ -3128,11 +3265,11 @@ async function deleteRecord(id) {
     queueRemoteDelete(id);
     syncPendingRemoteMutations();
     scheduleRemoteRetry(3000);
-    showToast("Data dihapus dari tampilan. Sedang hapus di database.");
+    showToast(clearedReminderCount ? "Data dan riwayat WA dihapus. Sedang sinkron ke database." : "Data dihapus dari tampilan. Sedang hapus di database.");
     return;
   }
 
-  showToast("Data dihapus.");
+  showToast(clearedReminderCount ? "Data dan riwayat WA dihapus." : "Data dihapus.");
 }
 
 function downloadFile(filename, type, content) {
@@ -3475,11 +3612,21 @@ function formatNominalField(event) {
   input.value = digits ? formatCurrency(Number(digits)) : "";
 }
 
-form.addEventListener("submit", function (event) {
+form.addEventListener("submit", async function (event) {
   event.preventDefault();
   applyProductionDefaultsToForm();
   const record = readForm();
-  upsertRecord(record);
+  const previousRecord = records.find(function (item) {
+    return item.id === record.id;
+  });
+  const resetWhatsappReminder = Boolean(
+    previousRecord &&
+    controls.resetWhatsappReminders &&
+    controls.resetWhatsappReminders.checked &&
+    normalizeWhatsapp(previousRecord.phone) !== normalizeWhatsapp(record.phone)
+  );
+  if (resetWhatsappReminder) clearWhatsappReminderHistory(previousRecord);
+  await upsertRecord(record, { whatsappReminderReset: resetWhatsappReminder });
 });
 
 if (controls.toggleFormBtn) {
@@ -3524,6 +3671,7 @@ controls.searchInput.addEventListener("input", formatUpperTextField);
 fields.phone.addEventListener("input", function () {
   clearFormSyncPending();
   fields.phone.value = formatWhatsappLocal(fields.phone.value);
+  updateWhatsappReminderResetControl();
 });
 
 if (fields.taxValidDate) {
@@ -3651,9 +3799,11 @@ controls.clearAllBtn.addEventListener("click", async function () {
   if (!records.length) return;
   const approved = confirm("Hapus semua data wajib pajak di browser ini?");
   if (!approved) return;
-  const previousIds = records.map(function (record) {
+  const previousRecords = records.slice();
+  const previousIds = previousRecords.map(function (record) {
     return record.id;
   });
+  const clearedReminderCount = clearWhatsappReminderHistory(previousRecords);
   records = [];
   saveRecords();
   resetForm();
@@ -3663,11 +3813,11 @@ controls.clearAllBtn.addEventListener("click", async function () {
     previousIds.forEach(queueRemoteDelete);
     syncPendingRemoteMutations();
     scheduleRemoteRetry(3000);
-    showToast("Semua data dihapus dari tampilan. Sedang hapus di database.");
+    showToast(clearedReminderCount ? "Semua data dan riwayat WA dihapus. Sedang sinkron ke database." : "Semua data dihapus dari tampilan. Sedang hapus di database.");
     return;
   }
 
-  showToast("Semua data dihapus.");
+  showToast(clearedReminderCount ? "Semua data dan riwayat WA dihapus." : "Semua data dihapus.");
 });
 
 controls.exportJsonBtn.addEventListener("click", exportJsonData);
