@@ -705,8 +705,7 @@ function renderPayoutCalendar() {
         total.textContent = formatCurrency(entries.reduce((sum, entry) => sum + entry.nominal, 0));
         dayElement.append(count, total);
         dayElement.addEventListener("click", () => {
-          selectedPayoutDate = dateValue;
-          renderPayoutCalendar();
+          selectPayoutDate(dateValue);
         });
       } else {
         dayElement.setAttribute("aria-label", `${formatDate(dateValue)}: tidak ada pencairan.`);
@@ -716,6 +715,21 @@ function renderPayoutCalendar() {
   }
 
   renderPayoutDetail();
+}
+
+function selectPayoutDate(dateValue, { scrollToCalendar = false } = {}) {
+  if (!payoutRecordsByDate.has(dateValue)) return;
+
+  selectedPayoutDate = dateValue;
+  selectedPayoutRecordId = "";
+  clearPayoutHistory();
+  renderPayoutCalendar();
+
+  if (!scrollToCalendar) return;
+  const calendarPanel = controls.payoutCalendar?.closest(".payout-calendar-panel");
+  window.requestAnimationFrame(() => {
+    calendarPanel?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 function renderMetrics(vehicles, dailyPayments) {
@@ -752,6 +766,18 @@ function renderDailyPaymentChart(dailyPayments) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onClick(event, activeElements) {
+        const activeElement = activeElements[0];
+        if (!activeElement) return;
+        const day = dailyPayments[activeElement.index];
+        if (!day?.count) return;
+        const period = controls.recordedPeriodFilter?.value;
+        if (!period) return;
+        selectPayoutDate(`${period}-${String(day.day).padStart(2, "0")}`, { scrollToCalendar: true });
+      },
+      onHover(event, activeElements, chart) {
+        chart.canvas.style.cursor = activeElements.length ? "pointer" : "default";
+      },
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label(context) { return `${formatNumber(context.raw)} pelunasan`; } } }
