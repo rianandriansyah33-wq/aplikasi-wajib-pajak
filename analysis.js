@@ -193,14 +193,14 @@ function populatePayoutPeriodFilter(records) {
   controls.payoutPeriodFilter.value = periods.includes(currentValue) ? currentValue : (periods[0] || "");
 }
 
-function buildDailyPaymentPattern(records, selectedPeriod) {
+function buildDailyPaymentPattern(payoutsByDate, selectedPeriod) {
   const days = Array.from({ length: 31 }, (_, index) => ({ day: index + 1, count: 0 }));
 
-  records.filter(isExplicitlyPaid).forEach((record) => {
-    const paidDate = getIsoDate(record.paid_date);
-    if (!paidDate || paidDate.slice(0, 7) !== selectedPeriod) return;
-    const day = Number(paidDate.slice(8, 10));
-    if (day >= 1 && day <= 31) days[day - 1].count += 1;
+  if (!/^\d{4}-\d{2}$/.test(String(selectedPeriod || ""))) return days;
+
+  days.forEach((item) => {
+    const dateValue = `${selectedPeriod}-${String(item.day).padStart(2, "0")}`;
+    item.count = (payoutsByDate.get(dateValue) || []).length;
   });
 
   return days;
@@ -850,12 +850,12 @@ function renderPaymentDuration(durationData) {
 function renderAnalysis() {
   const selectedPeriod = controls.recordedPeriodFilter.value;
   const vehicles = createMonthlyVehicles(productionRecords, selectedPeriod);
-  const dailyPayments = buildDailyPaymentPattern(productionRecords, selectedPeriod);
   const paymentDurations = buildPaymentDurations(productionRecords);
+  renderPayoutCalendar();
+  const dailyPayments = buildDailyPaymentPattern(payoutRecordsByDate, controls.payoutPeriodFilter.value);
   renderMetrics(vehicles, dailyPayments);
   renderDailyPaymentChart(dailyPayments);
   renderPaymentDuration(paymentDurations);
-  renderPayoutCalendar();
 }
 
 function setSource() {
@@ -930,6 +930,10 @@ controls.payoutPeriodFilter?.addEventListener("change", () => {
   selectedPayoutRecordId = "";
   clearPayoutHistory();
   renderPayoutCalendar();
+  const vehicles = createMonthlyVehicles(productionRecords, controls.recordedPeriodFilter.value);
+  const dailyPayments = buildDailyPaymentPattern(payoutRecordsByDate, controls.payoutPeriodFilter.value);
+  renderMetrics(vehicles, dailyPayments);
+  renderDailyPaymentChart(dailyPayments);
 });
 controls.refreshButton?.addEventListener("click", loadAnalysis);
 controls.payoutHistoryCloseButton?.addEventListener("click", closePayoutHistory);
