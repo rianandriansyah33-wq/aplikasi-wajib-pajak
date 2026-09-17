@@ -760,6 +760,8 @@ function renderDailyPaymentChart(dailyPayments) {
         data: dailyPayments.map((item) => item.count),
         backgroundColor: "#158f68",
         borderRadius: 5,
+        categoryPercentage: 0.8,
+        barPercentage: 0.9,
         maxBarThickness: 38
       }]
     },
@@ -791,6 +793,7 @@ function renderDailyPaymentChart(dailyPayments) {
         },
         x: {
           title: { display: true, text: "Tanggal pembayaran" },
+          ticks: { autoSkip: false, maxRotation: 0, minRotation: 0 },
           grid: { display: false }
         }
       }

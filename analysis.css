@@ -202,6 +202,14 @@ body {
   position: relative;
 }
 
+.daily-chart-scroll {
+  margin-top: 0.65rem;
+}
+
+.daily-chart-scroll .daily-chart-wrap {
+  margin-top: 0;
+}
+
 .payout-calendar-heading {
   align-items: flex-end;
 }
@@ -808,6 +816,35 @@ button.payout-calendar-day {
 
   .chart-wrap {
     height: 290px;
+  }
+
+  .daily-chart-scroll {
+    margin-top: .65rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: .55rem;
+    scrollbar-color: #779c9a #e7eef4;
+    scrollbar-width: thin;
+    touch-action: pan-x;
+  }
+
+  .daily-chart-scroll::-webkit-scrollbar {
+    height: .45rem;
+  }
+
+  .daily-chart-scroll::-webkit-scrollbar-track {
+    background: #e7eef4;
+    border-radius: 1rem;
+  }
+
+  .daily-chart-scroll::-webkit-scrollbar-thumb {
+    background: #779c9a;
+    border-radius: 1rem;
+  }
+
+  .daily-chart-scroll .daily-chart-wrap {
+    height: 300px;
+    min-width: 860px;
   }
 
   .payout-calendar-heading,

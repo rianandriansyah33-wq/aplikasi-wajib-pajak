@@ -1793,8 +1793,38 @@ textarea.form-control {
     padding: .4rem .6rem;
   }
 
+  .topbar > .container-fluid {
+    align-items: center;
+    flex-wrap: nowrap;
+  }
+
   .brand-block {
+    flex: 1 1 0;
     gap: .5rem;
+    min-width: 0;
+  }
+
+  .brand-block.navbar-brand {
+    white-space: normal;
+  }
+
+  .brand-copy,
+  .brand-heading {
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-actions {
+    flex: 0 0 auto;
+    position: static;
+  }
+
+  .mobile-menu-panel {
+    left: .6rem;
+    right: .6rem;
+    top: calc(100% + .45rem);
+    width: auto;
+    max-height: calc(100dvh - 5.25rem);
+    overflow-y: auto;
   }
 
   .app-mark {
@@ -1932,6 +1962,11 @@ textarea.form-control {
   .mobile-menu-button {
     min-width: 0;
     padding-inline: .65rem;
+  }
+
+  .mobile-menu-panel {
+    left: .45rem;
+    right: .45rem;
   }
 
   .sync-status {
