@@ -15,9 +15,20 @@
     NPP: ["/view/gethpnpp.php"],
     NTP: ["/view/gethpntp.php"]
   };
+  const STATUS_PAGE_PATHS = {
+    SPOS: "/idkstat.php?id=24",
+    NPP: "/idkstat.php?id=28",
+    NTP: "/idkstat.php?id=32"
+  };
+  const PLATE_CHECK_ENDPOINTS = ["/view/ceknorek.php", "/ceknorek.php"];
+  const LETTER_TYPES = ["NTP", "NPP", "SPOS"];
   const BATCH_SIZE = 3;
   const BATCH_PAUSE_MS = 300;
   const PREFLIGHT_SAMPLE_LIMIT = 6;
+  const statusPageEndpointCache = {
+    detail: new Map(),
+    phone: new Map()
+  };
 
   function notify(message, color) {
     let element = document.getElementById("siapp-vehicle-detail-status");
@@ -310,34 +321,57 @@
     return "/view/" + candidate.replace(/^\.\//, "");
   }
 
-  function discoverDetailEndpoints(letterType) {
-    const documentHtml = document.documentElement ? document.documentElement.innerHTML : "";
-    const pattern = /(?:https?:\/\/[^\"'\s]+)?(?:\/view)?\/vstat[a-z0-9_]*\.php/gi;
+  function endpointsFromHtml(html, letterType, pattern) {
     const expected = normalizeLetterType(letterType);
-    return (documentHtml.match(pattern) || []).map(normalizeEndpointCandidate).filter(function (endpoint) {
+    return (String(html || "").match(pattern) || []).map(normalizeEndpointCandidate).filter(function (endpoint) {
       const type = normalizeLetterType(endpoint);
       return type === expected;
     });
+  }
+
+  function discoverDetailEndpoints(letterType) {
+    const documentHtml = document.documentElement ? document.documentElement.innerHTML : "";
+    return endpointsFromHtml(documentHtml, letterType, /(?:https?:\/\/[^\"'\s]+)?(?:\/view)?\/vstat[a-z0-9_]*\.php/gi);
   }
 
   function discoverPhoneEndpoints(letterType) {
     const documentHtml = document.documentElement ? document.documentElement.innerHTML : "";
-    const pattern = /(?:https?:\/\/[^\"'\s]+)?(?:\/view)?\/gethp[a-z0-9_]*\.php/gi;
-    const expected = normalizeLetterType(letterType);
-    return (documentHtml.match(pattern) || []).map(normalizeEndpointCandidate).filter(function (endpoint) {
-      const type = normalizeLetterType(endpoint);
-      return type === expected;
-    });
+    return endpointsFromHtml(documentHtml, letterType, /(?:https?:\/\/[^\"'\s]+)?(?:\/view)?\/gethp[a-z0-9_]*\.php/gi);
   }
 
-  function getDetailEndpoints(letterType) {
+  async function discoverStatusPageEndpoints(letterType, kind) {
     const normalizedType = normalizeLetterType(letterType) || "NTP";
-    return Array.from(new Set(discoverDetailEndpoints(normalizedType).concat(DETAIL_ENDPOINTS[normalizedType] || [])));
+    const cache = statusPageEndpointCache[kind];
+    if (cache.has(normalizedType)) return cache.get(normalizedType);
+
+    const path = STATUS_PAGE_PATHS[normalizedType];
+    if (!path) return [];
+    try {
+      const response = await fetch(path, { credentials: "include" });
+      const html = await response.text();
+      if (!response.ok || !html) throw new Error("halaman status tidak tersedia");
+      const pattern = kind === "detail"
+        ? /(?:https?:\/\/[^\"'\s]+)?(?:\/view)?\/vstat[a-z0-9_]*\.php/gi
+        : /(?:https?:\/\/[^\"'\s]+)?(?:\/view)?\/gethp[a-z0-9_]*\.php/gi;
+      const endpoints = endpointsFromHtml(html, normalizedType, pattern);
+      cache.set(normalizedType, endpoints);
+      return endpoints;
+    } catch (error) {
+      cache.set(normalizedType, []);
+      return [];
+    }
   }
 
-  function getPhoneEndpoints(letterType) {
+  async function getDetailEndpoints(letterType) {
     const normalizedType = normalizeLetterType(letterType) || "NTP";
-    return Array.from(new Set(discoverPhoneEndpoints(normalizedType).concat(PHONE_ENDPOINTS[normalizedType] || [])));
+    const statusEndpoints = await discoverStatusPageEndpoints(normalizedType, "detail");
+    return Array.from(new Set(statusEndpoints.concat(discoverDetailEndpoints(normalizedType), DETAIL_ENDPOINTS[normalizedType] || [])));
+  }
+
+  async function getPhoneEndpoints(letterType) {
+    const normalizedType = normalizeLetterType(letterType) || "NTP";
+    const statusEndpoints = await discoverStatusPageEndpoints(normalizedType, "phone");
+    return Array.from(new Set(statusEndpoints.concat(discoverPhoneEndpoints(normalizedType), PHONE_ENDPOINTS[normalizedType] || [])));
   }
 
   async function fetchSiappText(endpoint, plateNumber) {
@@ -386,8 +420,8 @@
     return normalizePhone(match ? match[0] : raw);
   }
 
-  async function fetchPhoneValue(source) {
-    const endpoints = getPhoneEndpoints(source.letterType);
+  async function fetchPhoneValue(source, letterType) {
+    const endpoints = await getPhoneEndpoints(letterType || source.letterType);
     for (let index = 0; index < endpoints.length; index += 1) {
       try {
         const responseText = await fetchSiappText(endpoints[index], source.plateNumber);
@@ -400,25 +434,56 @@
     return "";
   }
 
-  async function fetchVehicleDetail(source) {
-    const endpoints = getDetailEndpoints(source.letterType);
-    const phone = await fetchPhoneValue(source);
+  async function checkPlateBeforeDetail(plateNumber) {
+    const errors = [];
+    for (let index = 0; index < PLATE_CHECK_ENDPOINTS.length; index += 1) {
+      try {
+        // Status SIAPP normally performs this request immediately after a
+        // nopol is submitted, before requesting its phone and detail fields.
+        await fetchSiappText(PLATE_CHECK_ENDPOINTS[index], plateNumber);
+        return;
+      } catch (error) {
+        errors.push(error && error.message ? error.message : "cek nopol gagal");
+      }
+    }
+    throw new Error("Nopol " + plateNumber + " tidak dapat diverifikasi oleh SIAPP: " + errors.join(" | "));
+  }
+
+  async function fetchVehicleDetailForLetter(source, letterType) {
+    const endpoints = await getDetailEndpoints(letterType);
+    const phone = await fetchPhoneValue(source, letterType);
     let phoneOnlyDetail = null;
     const errors = [];
     for (let index = 0; index < endpoints.length; index += 1) {
       try {
         const html = await fetchSiappText(endpoints[index], source.plateNumber);
         const parsed = new DOMParser().parseFromString(html, "text/html");
-        const detail = collectDetail(parsed, source.plateNumber, source.letterType);
+        const detail = collectDetail(parsed, source.plateNumber, letterType);
         detail.phone = phone;
         if (hasVehicleData(detail)) return detail;
         if (isDetailUsable(detail)) phoneOnlyDetail = detail;
+        errors.push("respons " + endpoints[index] + " tidak berisi detail kendaraan");
       } catch (error) {
         errors.push(error && error.message ? error.message : "respons tidak dapat dibaca");
       }
     }
     if (phoneOnlyDetail) return phoneOnlyDetail;
-    throw new Error("Detail " + (source.letterType || "SIAPP") + " untuk " + source.plateNumber + " tidak tersedia" + (errors.length ? ": " + errors.join(" | ") : ""));
+    throw new Error("Status " + (letterType || "SIAPP") + " untuk " + source.plateNumber + " tidak tersedia" + (errors.length ? ": " + errors.join(" | ") : ""));
+  }
+
+  async function fetchVehicleDetail(source) {
+    const preferredType = normalizeLetterType(source.letterType) || "NTP";
+    const types = Array.from(new Set([preferredType].concat(LETTER_TYPES)));
+    const errors = [];
+    await checkPlateBeforeDetail(source.plateNumber);
+    for (let index = 0; index < types.length; index += 1) {
+      try {
+        return await fetchVehicleDetailForLetter(source, types[index]);
+      } catch (error) {
+        errors.push(error && error.message ? error.message : "status tidak dapat dibaca");
+      }
+    }
+    throw new Error("Detail kendaraan " + source.plateNumber + " tidak tersedia pada Status NTP, NPP, maupun SPOS: " + errors.join(" | "));
   }
 
   function uniquePlateSources(rows) {
