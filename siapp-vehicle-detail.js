@@ -5,30 +5,17 @@
   const supabaseUrl = String(config.supabaseUrl || "").replace(/\/$/, "");
   const publishableKey = String(config.supabasePublishableKey || "");
   const LETTER_RANK = { SPOS: 1, NPP: 2, NTP: 3 };
-  const DETAIL_ENDPOINTS = {
-    SPOS: ["/view/vstatspos.php", "/view/vstatspso.php"],
-    NPP: ["/view/vstatnpp.php"],
-    NTP: ["/view/vstatntp.php"]
-  };
-  const PHONE_ENDPOINTS = {
-    SPOS: ["/view/gethpspos.php", "/view/gethpspso.php"],
-    NPP: ["/view/gethpnpp.php"],
-    NTP: ["/view/gethpntp.php"]
-  };
-  const STATUS_PAGE_PATHS = {
-    SPOS: "/idkstat.php?id=24",
-    NPP: "/idkstat.php?id=28",
-    NTP: "/idkstat.php?id=32"
-  };
-  const PLATE_CHECK_ENDPOINTS = ["/view/ceknorek.php", "/ceknorek.php"];
+  // Only this page and detail endpoint have been verified in SIAPP's Network tab.
+  const VERIFIED_NTP_PAGE = "/idxstaf.php?id=32";
+  const VERIFIED_NTP_DETAIL = "/view/vstatntp.php";
   const LETTER_TYPES = ["NTP", "NPP", "SPOS"];
   const BATCH_SIZE = 3;
   const BATCH_PAUSE_MS = 300;
   const PREFLIGHT_SAMPLE_LIMIT = 6;
-  const statusPageEndpointCache = {
-    detail: new Map(),
-    phone: new Map()
-  };
+  const statusPageEndpointCache = new Map();
+  const scriptTextCache = new Map();
+  const unavailableEndpoints = new Set();
+  const REQUEST_TIMEOUT_MS = 15000;
 
   function notify(message, color) {
     let element = document.getElementById("siapp-vehicle-detail-status");
@@ -39,7 +26,9 @@
       document.body.appendChild(element);
     }
     element.textContent = message;
-    if (color) element.style.background = color;
+    element.style.background = color || "rgb(22,35,49)";
+    element.style.maxHeight = "70vh";
+    element.style.overflowY = "auto";
   }
 
   function normalize(value) {
@@ -313,86 +302,139 @@
     }
   }
 
-  function normalizeEndpointCandidate(value) {
-    const candidate = String(value || "").trim();
-    if (!candidate) return "";
-    if (/^https?:\/\//i.test(candidate)) return candidate;
-    if (candidate.startsWith("/")) return candidate;
-    return "/view/" + candidate.replace(/^\.\//, "");
-  }
-
-  function endpointsFromHtml(html, letterType, pattern) {
-    const expected = normalizeLetterType(letterType);
-    return (String(html || "").match(pattern) || []).map(normalizeEndpointCandidate).filter(function (endpoint) {
-      const type = normalizeLetterType(endpoint);
-      return type === expected;
-    });
-  }
-
-  function discoverDetailEndpoints(letterType) {
-    const documentHtml = document.documentElement ? document.documentElement.innerHTML : "";
-    return endpointsFromHtml(documentHtml, letterType, /(?:https?:\/\/[^\"'\s]+)?(?:\/view)?\/vstat[a-z0-9_]*\.php/gi);
-  }
-
-  function discoverPhoneEndpoints(letterType) {
-    const documentHtml = document.documentElement ? document.documentElement.innerHTML : "";
-    return endpointsFromHtml(documentHtml, letterType, /(?:https?:\/\/[^\"'\s]+)?(?:\/view)?\/gethp[a-z0-9_]*\.php/gi);
-  }
-
-  async function discoverStatusPageEndpoints(letterType, kind) {
-    const normalizedType = normalizeLetterType(letterType) || "NTP";
-    const cache = statusPageEndpointCache[kind];
-    if (cache.has(normalizedType)) return cache.get(normalizedType);
-
-    const path = STATUS_PAGE_PATHS[normalizedType];
-    if (!path) return [];
+  function siappUrl(value, baseUrl) {
     try {
-      const response = await fetch(path, { credentials: "include" });
-      const html = await response.text();
-      if (!response.ok || !html) throw new Error("halaman status tidak tersedia");
-      const pattern = kind === "detail"
-        ? /(?:https?:\/\/[^\"'\s]+)?(?:\/view)?\/vstat[a-z0-9_]*\.php/gi
-        : /(?:https?:\/\/[^\"'\s]+)?(?:\/view)?\/gethp[a-z0-9_]*\.php/gi;
-      const endpoints = endpointsFromHtml(html, normalizedType, pattern);
-      cache.set(normalizedType, endpoints);
-      return endpoints;
+      const url = new URL(String(value || "").trim(), baseUrl || location.href);
+      return url.origin === location.origin && /^https?:$/.test(url.protocol) ? url.href : "";
     } catch (error) {
-      cache.set(normalizedType, []);
-      return [];
+      return "";
     }
   }
 
+  function findStatusPageUrl(letterType) {
+    const expected = normalizeLetterType(letterType);
+    const link = Array.from(document.querySelectorAll("a[href]")).find(function (item) {
+      const label = normalize(readableText(item)).toUpperCase();
+      return /^STATUS\s+(SPOS|SPSO|NPP|NTP)$/.test(label) && normalizeLetterType(label) === expected;
+    });
+    if (link) return siappUrl(link.getAttribute("href"), document.baseURI);
+    if (detectCurrentLetterType(document) === expected) return location.href;
+    return expected === "NTP" ? siappUrl(VERIFIED_NTP_PAGE) : "";
+  }
+
+  function endpointsFromScript(source, letterType, baseUrl) {
+    const result = { detail: [], phone: [] };
+    // Capture the whole quoted URL so relative directory names are preserved.
+    const literals = String(source || "").matchAll(/["']([^"'\s<>]+\.php(?:\?[^"'\s<>]*)?)["']/gi);
+    for (const match of literals) {
+      const url = siappUrl(match[1], baseUrl);
+      if (!url) continue;
+      const filename = new URL(url).pathname.split("/").pop();
+      if (normalizeLetterType(filename) !== normalizeLetterType(letterType)) continue;
+      if (/^vstat[a-z0-9_]*\.php$/i.test(filename)) result.detail.push(url);
+      if (/^gethp[a-z0-9_]*\.php$/i.test(filename)) result.phone.push(url);
+    }
+    return result;
+  }
+
+  async function readSiappResponse(url, options) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, Object.assign({ credentials: "same-origin" }, options, { signal: controller.signal }));
+      const html = await response.text();
+      if (!response.ok) {
+        const error = new Error("SIAPP " + response.status + " di " + new URL(url, location.href).pathname);
+        error.status = response.status;
+        throw error;
+      }
+      const root = new DOMParser().parseFromString(html, "text/html");
+      if (root.querySelector('input[type="password"]') || /(?:^|\/)login(?:\.php|\/|$)/i.test(new URL(response.url || url, location.href).pathname)) {
+        const error = new Error("Sesi SIAPP berakhir. Login kembali lalu jalankan bookmark.");
+        error.sessionExpired = true;
+        throw error;
+      }
+      return { html: html, root: root, url: response.url || url };
+    } catch (error) {
+      if (error.name === "AbortError") throw new Error("SIAPP tidak merespons dalam 15 detik.");
+      throw error;
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+
+  async function loadStatusPageEndpoints(letterType) {
+    const pageUrl = findStatusPageUrl(letterType);
+    if (!pageUrl) return { detail: [], phone: [] };
+    const page = pageUrl === location.href
+      ? { root: document, url: pageUrl }
+      : await readSiappResponse(pageUrl);
+    const baseElement = page.root.querySelector("base[href]");
+    const baseUrl = baseElement ? siappUrl(baseElement.getAttribute("href"), page.url) || page.url : page.url;
+    const result = { detail: [], phone: [] };
+    for (const script of page.root.querySelectorAll("script")) {
+      let source = script.textContent || "";
+      if (script.hasAttribute("src")) {
+        const scriptUrl = siappUrl(script.getAttribute("src"), baseUrl);
+        if (!scriptUrl) continue;
+        if (!scriptTextCache.has(scriptUrl)) {
+          scriptTextCache.set(scriptUrl, readSiappResponse(scriptUrl).then(function (response) { return response.html; }).catch(function (error) {
+            if (error.sessionExpired) throw error;
+            return "";
+          }));
+        }
+        source = await scriptTextCache.get(scriptUrl);
+      }
+      const endpoints = endpointsFromScript(source, letterType, baseUrl);
+      result.detail.push.apply(result.detail, endpoints.detail);
+      result.phone.push.apply(result.phone, endpoints.phone);
+    }
+    return { detail: Array.from(new Set(result.detail)), phone: Array.from(new Set(result.phone)) };
+  }
+
+  async function getStatusPageEndpoints(letterType) {
+    const type = normalizeLetterType(letterType) || "NTP";
+    if (!statusPageEndpointCache.has(type)) {
+      statusPageEndpointCache.set(type, loadStatusPageEndpoints(type).catch(function (error) {
+        if (error.sessionExpired) throw error;
+        return { detail: [], phone: [], error: error.message };
+      }));
+    }
+    return statusPageEndpointCache.get(type);
+  }
+
   async function getDetailEndpoints(letterType) {
-    const normalizedType = normalizeLetterType(letterType) || "NTP";
-    const statusEndpoints = await discoverStatusPageEndpoints(normalizedType, "detail");
-    return Array.from(new Set(statusEndpoints.concat(discoverDetailEndpoints(normalizedType), DETAIL_ENDPOINTS[normalizedType] || [])));
+    const found = await getStatusPageEndpoints(letterType);
+    const verified = letterType === "NTP" ? [siappUrl(VERIFIED_NTP_DETAIL)] : [];
+    return Array.from(new Set(found.detail.concat(verified)));
   }
 
   async function getPhoneEndpoints(letterType) {
-    const normalizedType = normalizeLetterType(letterType) || "NTP";
-    const statusEndpoints = await discoverStatusPageEndpoints(normalizedType, "phone");
-    return Array.from(new Set(statusEndpoints.concat(discoverPhoneEndpoints(normalizedType), PHONE_ENDPOINTS[normalizedType] || [])));
+    return (await getStatusPageEndpoints(letterType)).phone;
   }
 
   async function fetchSiappText(endpoint, plateNumber) {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest"
-      },
-      body: "nopol=" + encodeURIComponent(plateKey(plateNumber))
-    });
-    const text = await response.text();
-    if (!response.ok) throw new Error("SIAPP " + response.status + " di " + endpoint);
-    if (!text || !text.trim()) throw new Error("SIAPP mengembalikan respons kosong di " + endpoint);
-    return text;
+    if (unavailableEndpoints.has(endpoint)) throw new Error("Alamat SIAPP tidak tersedia: " + new URL(endpoint).pathname);
+    let response;
+    try {
+      response = await readSiappResponse(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest"
+        },
+        body: "nopol=" + encodeURIComponent(plateKey(plateNumber))
+      });
+    } catch (error) {
+      if (error.status === 404 || error.status === 410) unavailableEndpoints.add(endpoint);
+      throw error;
+    }
+    return response.html;
   }
 
   function phoneFromObject(value) {
     if (!value || typeof value !== "object") return "";
-    const directKey = Object.keys(value).find(function (key) { return /^(hp|phone|no_hp|nomor_hp)$/i.test(key); });
+    const directKey = Object.keys(value).find(function (key) { return /^(hp|phone|no_?hp|nomor_?hp)$/i.test(key); });
     if (directKey) {
       const directPhone = normalizePhone(value[directKey]);
       if (directPhone) return directPhone;
@@ -406,8 +448,10 @@
     const raw = String(responseText || "").trim();
     if (!raw) return "";
     try {
-      const fromJson = phoneFromObject(JSON.parse(raw));
+      const json = JSON.parse(raw);
+      const fromJson = typeof json === "string" || typeof json === "number" ? normalizePhone(json) : phoneFromObject(json);
       if (fromJson) return fromJson;
+      return "";
     } catch (error) {
       // SIAPP may return a plain value or a short HTML fragment instead of JSON.
     }
@@ -416,8 +460,8 @@
       return /hp|phone|nomor.*hp/i.test([item.name, item.id, item.placeholder].join(" ")) && normalizePhone(item.value);
     });
     if (input) return normalizePhone(input.value);
-    const match = raw.match(/(?:\+?62|0)8\d{7,13}/);
-    return normalizePhone(match ? match[0] : raw);
+    // Do not mistake numbers elsewhere in an HTML response for the requested HP.
+    return /^[+\d\s().-]+$/.test(raw) ? normalizePhone(raw) : "";
   }
 
   async function fetchPhoneValue(source, letterType) {
@@ -428,25 +472,10 @@
         const phone = parsePhoneResponse(responseText);
         if (phone) return phone;
       } catch (error) {
-        // The next known phone endpoint is attempted for the same SIAPP status.
+        if (error.sessionExpired) throw error;
       }
     }
     return "";
-  }
-
-  async function checkPlateBeforeDetail(plateNumber) {
-    const errors = [];
-    for (let index = 0; index < PLATE_CHECK_ENDPOINTS.length; index += 1) {
-      try {
-        // Status SIAPP normally performs this request immediately after a
-        // nopol is submitted, before requesting its phone and detail fields.
-        await fetchSiappText(PLATE_CHECK_ENDPOINTS[index], plateNumber);
-        return;
-      } catch (error) {
-        errors.push(error && error.message ? error.message : "cek nopol gagal");
-      }
-    }
-    throw new Error("Nopol " + plateNumber + " tidak dapat diverifikasi oleh SIAPP: " + errors.join(" | "));
   }
 
   async function fetchVehicleDetailForLetter(source, letterType) {
@@ -454,35 +483,51 @@
     const phone = await fetchPhoneValue(source, letterType);
     let phoneOnlyDetail = null;
     const errors = [];
+    if (phone) {
+      phoneOnlyDetail = collectDetail(new DOMParser().parseFromString("", "text/html"), source.plateNumber, "");
+      phoneOnlyDetail.phone = phone;
+    }
     for (let index = 0; index < endpoints.length; index += 1) {
       try {
         const html = await fetchSiappText(endpoints[index], source.plateNumber);
         const parsed = new DOMParser().parseFromString(html, "text/html");
+        const responsePlate = findLabelValue("Nopol", parsed);
+        if (!responsePlate || plateKey(responsePlate) !== plateKey(source.plateNumber)) {
+          throw new Error("Respons " + new URL(endpoints[index]).pathname + " tidak memuat detail nopol yang diminta");
+        }
         const detail = collectDetail(parsed, source.plateNumber, letterType);
         detail.phone = phone;
         if (hasVehicleData(detail)) return detail;
         if (isDetailUsable(detail)) phoneOnlyDetail = detail;
         errors.push("respons " + endpoints[index] + " tidak berisi detail kendaraan");
       } catch (error) {
+        if (error.sessionExpired) throw error;
         errors.push(error && error.message ? error.message : "respons tidak dapat dibaca");
       }
     }
     if (phoneOnlyDetail) return phoneOnlyDetail;
-    throw new Error("Status " + (letterType || "SIAPP") + " untuk " + source.plateNumber + " tidak tersedia" + (errors.length ? ": " + errors.join(" | ") : ""));
+    throw new Error("Status " + (letterType || "SIAPP") + ": " + (errors.length ? errors.join(" | ") : "alamat baca detail belum ditemukan pada menu Status"));
   }
 
   async function fetchVehicleDetail(source) {
     const preferredType = normalizeLetterType(source.letterType) || "NTP";
     const types = Array.from(new Set([preferredType].concat(LETTER_TYPES)));
     const errors = [];
-    await checkPlateBeforeDetail(source.plateNumber);
+    let phoneOnlyDetail = null;
     for (let index = 0; index < types.length; index += 1) {
       try {
-        return await fetchVehicleDetailForLetter(source, types[index]);
+        const detail = await fetchVehicleDetailForLetter(source, types[index]);
+        if (hasVehicleData(detail)) {
+          detail.phone = detail.phone || (phoneOnlyDetail && phoneOnlyDetail.phone) || "";
+          return detail;
+        }
+        if (!phoneOnlyDetail) phoneOnlyDetail = detail;
       } catch (error) {
+        if (error.sessionExpired) throw error;
         errors.push(error && error.message ? error.message : "status tidak dapat dibaca");
       }
     }
+    if (phoneOnlyDetail) return phoneOnlyDetail;
     throw new Error("Detail kendaraan " + source.plateNumber + " tidak tersedia pada Status NTP, NPP, maupun SPOS: " + errors.join(" | "));
   }
 
@@ -539,15 +584,14 @@
       try {
         outcomes.push({ source: source, detail: await fetchVehicleDetail(source), error: "" });
       } catch (error) {
+        if (error.sessionExpired) throw error;
         outcomes.push({ source: source, detail: null, error: error && error.message ? error.message : "respons tidak dapat dibaca" });
       }
     }
     const successful = outcomes.filter(function (outcome) { return outcome.detail; });
     if (!successful.length) {
-      const examples = outcomes.slice(0, 3).map(function (outcome) {
-        return outcome.source.letterType + " " + outcome.source.plateNumber + ": " + outcome.error;
-      }).join(". ");
-      throw new Error("Uji baca SIAPP gagal, sehingga penarikan ribuan nopol dihentikan. " + examples + ". Buka Status SPOS/NPP/NTP pada SIAPP, pastikan masih login, lalu jalankan ulang bookmark terbaru.");
+      const example = outcomes[0];
+      throw new Error("Uji baca SIAPP gagal pada " + samples.length + " nopol; belum ada penyimpanan. " + example.error + ". Periksa Response permintaan vstat/gethp untuk nopol yang tampil pada halaman Status SIAPP.");
     }
     return successful;
   }
@@ -577,7 +621,7 @@
     const pending = uniquePlateSources(sourceRows).filter(function (source) {
       const existingType = existing.get(source.plateKey);
       const existingDetail = existingDetailsByPlate.get(source.plateKey);
-      return !existingType || letterRank(source.letterType) > letterRank(existingType) || !normalizePhone(existingDetail && existingDetail.phone);
+      return !existingType || !hasVehicleData(existingDetail) || letterRank(source.letterType) > letterRank(existingType) || !normalizePhone(existingDetail && existingDetail.phone);
     });
 
     if (!pending.length) {
@@ -621,6 +665,7 @@
         return fetchVehicleDetail(source).then(function (detail) {
           return { detail: detail, source: source };
         }).catch(function (error) {
+          if (error.sessionExpired) throw error;
           return { detail: null, source: source, error: error && error.message ? error.message : "respons tidak dapat dibaca" };
         });
       }));
@@ -679,8 +724,15 @@
   }
 
   function detectCurrentLetterType(root) {
-    const text = normalize(root && root.body ? root.body.textContent : root && root.textContent);
-    return normalizeLetterType(text) || "NTP";
+    const headings = Array.from(root.querySelectorAll("h1, h2, h3, h4, h5, h6, legend, strong, b"));
+    const heading = headings.find(function (element) {
+      return /^STATUS\s+(SPOS|SPSO|NPP|NTP)$/i.test(readableText(element));
+    });
+    if (heading) return normalizeLetterType(readableText(heading));
+    const dateCell = Array.from(root.querySelectorAll("table thead td, table thead th")).find(function (element) {
+      return /^TGL\s+(SPOS|SPSO|NPP|NTP)$/i.test(readableText(element));
+    });
+    return dateCell ? normalizeLetterType(readableText(dateCell)) : "";
   }
 
   if (!supabaseUrl || !publishableKey) {

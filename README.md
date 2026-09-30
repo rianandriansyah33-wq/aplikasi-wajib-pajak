@@ -49,6 +49,10 @@ Untuk satu nopol yang sedang dibuka di `SPOS`, `NPP`, atau `NTP` > `Status`, boo
 
 Bookmark ini menyimpan nomor HP SIAPP untuk follow-up. Email dan NIK dari formulir Status SIAPP tidak disimpan.
 
+Jika penarikan berhenti dengan `404 ceknorek.php`, unggah versi terbaru `siapp-vehicle-detail.js`. Versi terbaru membaca tautan menu Status serta alamat detail/HP dari skrip halaman tersebut, mempertahankan folder URL relatif, dan tidak memakai permintaan `ceknorek.php` sebagai syarat. Bookmark memuat skrip dengan parameter waktu setiap kali dijalankan, sehingga tidak perlu memasang ulang bookmark apabila alamat hosting dan targetnya tetap sama. Perbaikan ini tidak memerlukan migrasi SQL tambahan.
+
+Pengujian regresi memakai respons SIAPP dan Supabase simulasi: jalankan `node tests/siapp-vehicle-detail.test.cjs` dengan modul `playwright` dan Chrome tersedia. Pengujian ini tidak membaca atau mengubah database SIAPP/Supabase asli.
+
 ## Migrasi penuh dari Google Sheet
 
 Sebelum menghapus Google Sheet, ekspor kedua tab berikut satu per satu dari Google Sheet: pilih tab, lalu `File` > `Download` > `Comma-separated values (.csv, current sheet)`.
