@@ -17,6 +17,7 @@
   };
   const BATCH_SIZE = 3;
   const BATCH_PAUSE_MS = 300;
+  const PREFLIGHT_SAMPLE_LIMIT = 6;
 
   function notify(message, color) {
     let element = document.getElementById("siapp-vehicle-detail-status");
@@ -349,8 +350,10 @@
       },
       body: "nopol=" + encodeURIComponent(plateKey(plateNumber))
     });
-    if (!response.ok) throw new Error("SIAPP " + response.status);
-    return response.text();
+    const text = await response.text();
+    if (!response.ok) throw new Error("SIAPP " + response.status + " di " + endpoint);
+    if (!text || !text.trim()) throw new Error("SIAPP mengembalikan respons kosong di " + endpoint);
+    return text;
   }
 
   function phoneFromObject(value) {
@@ -401,6 +404,7 @@
     const endpoints = getDetailEndpoints(source.letterType);
     const phone = await fetchPhoneValue(source);
     let phoneOnlyDetail = null;
+    const errors = [];
     for (let index = 0; index < endpoints.length; index += 1) {
       try {
         const html = await fetchSiappText(endpoints[index], source.plateNumber);
@@ -410,11 +414,11 @@
         if (hasVehicleData(detail)) return detail;
         if (isDetailUsable(detail)) phoneOnlyDetail = detail;
       } catch (error) {
-        // The next known endpoint is attempted for the same SIAPP status.
+        errors.push(error && error.message ? error.message : "respons tidak dapat dibaca");
       }
     }
     if (phoneOnlyDetail) return phoneOnlyDetail;
-    throw new Error("Detail " + (source.letterType || "SIAPP") + " tidak tersedia");
+    throw new Error("Detail " + (source.letterType || "SIAPP") + " untuk " + source.plateNumber + " tidak tersedia" + (errors.length ? ": " + errors.join(" | ") : ""));
   }
 
   function uniquePlateSources(rows) {
@@ -441,6 +445,46 @@
 
   function pause(milliseconds) {
     return new Promise(function (resolve) { window.setTimeout(resolve, milliseconds); });
+  }
+
+  function representativeSources(sources) {
+    const selected = [];
+    const seenLetters = new Set();
+    sources.forEach(function (source) {
+      if (selected.length >= PREFLIGHT_SAMPLE_LIMIT) return;
+      const letterType = normalizeLetterType(source.letterType) || "NTP";
+      if (!seenLetters.has(letterType)) {
+        selected.push(source);
+        seenLetters.add(letterType);
+      }
+    });
+    sources.forEach(function (source) {
+      if (selected.length >= PREFLIGHT_SAMPLE_LIMIT) return;
+      if (!selected.some(function (item) { return item.plateKey === source.plateKey; })) selected.push(source);
+    });
+    return selected;
+  }
+
+  async function preflightDetails(sources) {
+    const samples = representativeSources(sources);
+    const outcomes = [];
+    for (let index = 0; index < samples.length; index += 1) {
+      const source = samples[index];
+      notify("Menguji Status " + source.letterType + " untuk " + source.plateNumber + " (" + (index + 1) + "/" + samples.length + ")...");
+      try {
+        outcomes.push({ source: source, detail: await fetchVehicleDetail(source), error: "" });
+      } catch (error) {
+        outcomes.push({ source: source, detail: null, error: error && error.message ? error.message : "respons tidak dapat dibaca" });
+      }
+    }
+    const successful = outcomes.filter(function (outcome) { return outcome.detail; });
+    if (!successful.length) {
+      const examples = outcomes.slice(0, 3).map(function (outcome) {
+        return outcome.source.letterType + " " + outcome.source.plateNumber + ": " + outcome.error;
+      }).join(". ");
+      throw new Error("Uji baca SIAPP gagal, sehingga penarikan ribuan nopol dihentikan. " + examples + ". Buka Status SPOS/NPP/NTP pada SIAPP, pastikan masih login, lalu jalankan ulang bookmark terbaru.");
+    }
+    return successful;
   }
 
   async function runAutomaticImport() {
@@ -476,7 +520,7 @@
       return;
     }
 
-    const approved = window.confirm("Tarik detail kendaraan untuk " + pending.length + " nopol " + scopeLabel + "? Proses berjalan otomatis di tab SIAPP dan dapat dilanjutkan dengan menjalankan bookmark lagi bila terhenti.");
+    const approved = window.confirm("Tarik detail kendaraan untuk " + pending.length + " nopol " + scopeLabel + "? Sistem akan menguji beberapa respons Status SIAPP terlebih dahulu. Proses dapat dilanjutkan dengan menjalankan bookmark lagi bila terhenti.");
     if (!approved) {
       notify("Penarikan detail dibatalkan.");
       return;
@@ -487,15 +531,32 @@
     let skippedCount = 0;
     let failedCount = 0;
     const unreadableByLetter = { SPOS: 0, NPP: 0, NTP: 0 };
-    const chunks = splitIntoChunks(pending, BATCH_SIZE);
+    const preflightOutcomes = await preflightDetails(pending);
+    const preflightDetailsOnly = preflightOutcomes.map(function (outcome) {
+      return mergeDetail(existingDetailsByPlate.get(plateKey(outcome.detail.plate_key)), outcome.detail);
+    });
+    try {
+      await upsertDetails(preflightDetailsOnly);
+      savedCount += preflightDetailsOnly.length;
+      phoneFilledCount += await fillMissingTaxpayerPhones(preflightDetailsOnly, taxpayersByPlate);
+      preflightDetailsOnly.forEach(function (detail) {
+        existingDetailsByPlate.set(plateKey(detail.plate_key), detail);
+      });
+    } catch (error) {
+      throw new Error("Detail berhasil dibaca dari SIAPP, tetapi gagal disimpan ke Supabase: " + (error && error.message ? error.message : "galat tidak diketahui") + ". Jalankan migrasi terbaru lalu periksa policy tabel vehicle_details.");
+    }
+
+    const preflightKeys = new Set(preflightOutcomes.map(function (outcome) { return outcome.source.plateKey; }));
+    const remaining = pending.filter(function (source) { return !preflightKeys.has(source.plateKey); });
+    const chunks = splitIntoChunks(remaining, BATCH_SIZE);
     for (let index = 0; index < chunks.length; index += 1) {
       const chunk = chunks[index];
-      notify("Menarik detail " + Math.min((index * BATCH_SIZE) + chunk.length, pending.length) + "/" + pending.length + " nopol. Tersimpan " + savedCount + ".");
+      notify("Menarik detail " + Math.min(preflightOutcomes.length + (index * BATCH_SIZE) + chunk.length, pending.length) + "/" + pending.length + " nopol. Tersimpan " + savedCount + ".");
       const outcomes = await Promise.all(chunk.map(function (source) {
         return fetchVehicleDetail(source).then(function (detail) {
           return { detail: detail, source: source };
-        }).catch(function () {
-          return { detail: null, source: source };
+        }).catch(function (error) {
+          return { detail: null, source: source, error: error && error.message ? error.message : "respons tidak dapat dibaca" };
         });
       }));
       const details = outcomes.map(function (outcome) { return outcome.detail; }).filter(Boolean).map(function (detail) {
@@ -512,6 +573,7 @@
         skippedCount += chunk.length - details.length;
       } catch (error) {
         failedCount += details.length;
+        throw new Error("Penarikan dihentikan: detail SIAPP terbaca, tetapi batch gagal disimpan ke Supabase: " + (error && error.message ? error.message : "galat tidak diketahui") + ". Jalankan migrasi terbaru lalu coba lagi.");
       }
       if (index < chunks.length - 1) await pause(BATCH_PAUSE_MS);
     }
