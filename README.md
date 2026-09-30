@@ -33,6 +33,22 @@ Sebelum memakai fitur reminder pertama kali, jalankan [supabase-reminder-migrati
 
 Tombol WhatsApp membuka template reminder berikutnya, sedangkan tombol `Tandai #...` dipakai setelah pesan benar-benar dikirim. Penandaan sengaja dipisah agar membuka WhatsApp tanpa mengirim pesan tidak menaikkan hitungan reminder. Template ke-2 sampai ke-10 memakai narasi layanan e-Samsat Jatim tanpa gambar maupun tautan eksternal.
 
+## Detail kendaraan SIAPP
+
+Data seperti nomor HP, jenis kendaraan, merk/tipe, tahun/warna, masa STNK, PKB, opsen, dan jumlah memang tidak selalu tersedia pada tabel Buku Produksi. SIAPP menyediakan detail tersebut melalui Status SPOS, NPP, dan NTP, tetapi endpointnya menerima satu nopol per permintaan. Aplikasi membuat proses itu berjalan otomatis secara bertahap tanpa memasukkan nopol satu per satu.
+
+1. Jalankan [supabase-vehicle-detail-migration.sql](supabase-vehicle-detail-migration.sql) sekali melalui Supabase `SQL Editor`.
+2. Buka menu `SIAPP` aplikasi, pilih `Kartu follow-up` atau `Semua nopol Buku Produksi` pada Target Detail Otomatis, lalu pasang bookmark `Tarik Detail Otomatis`. Pasang ulang bookmark bila target diubah.
+3. Buka halaman SIAPP mana pun yang sudah login, lalu klik bookmark tersebut. Konfirmasi jumlah nopol yang akan diproses.
+4. Biarkan tab SIAPP terbuka sampai notifikasi menyatakan selesai. Bila tab berhenti atau koneksi putus, jalankan bookmark kembali; nopol dengan detail yang sudah tersimpan akan dilewati.
+5. Buka detail kartu nopol di aplikasi. Bagian `Detail Kendaraan SIAPP` akan menampilkan data yang tersimpan beserta sumber statusnya. Nomor kartu follow-up yang masih kosong juga otomatis diisi dari nomor HP SIAPP; nomor yang telah diisi sebelumnya tidak ditimpa.
+
+Target `Kartu follow-up` cocok untuk melengkapi kartu yang sedang dikelola. Target `Semua nopol Buku Produksi` mencakup seluruh riwayat yang tersimpan dan dapat membutuhkan waktu lebih lama karena SIAPP tidak menyediakan endpoint detail massal.
+
+Untuk satu nopol yang sedang dibuka di `SPOS`, `NPP`, atau `NTP` > `Status`, bookmark `Simpan Detail Status SIAPP` masih dapat digunakan.
+
+Bookmark ini menyimpan nomor HP SIAPP untuk follow-up. Email dan NIK dari formulir Status SIAPP tidak disimpan.
+
 ## Migrasi penuh dari Google Sheet
 
 Sebelum menghapus Google Sheet, ekspor kedua tab berikut satu per satu dari Google Sheet: pilih tab, lalu `File` > `Download` > `Comma-separated values (.csv, current sheet)`.

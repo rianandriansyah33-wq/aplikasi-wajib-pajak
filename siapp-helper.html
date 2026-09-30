@@ -76,6 +76,13 @@
             <span>Tahun Sinkron Periode</span>
             <input class="form-control" id="periodYearInput" type="number" min="2000" max="2100" inputmode="numeric" />
           </label>
+          <label>
+            <span>Target Detail Otomatis</span>
+            <select class="form-select" id="vehicleDetailScope">
+              <option value="taxpayers" selected>Kartu follow-up</option>
+              <option value="production">Semua nopol Buku Produksi</option>
+            </select>
+          </label>
           <a class="secondary-button helper-open-siapp" href="https://siapp.dipendajatim.go.id/idxstat.php" target="_blank" rel="noopener">Buka SIAPP</a>
         </div>
 
@@ -85,6 +92,8 @@
           <a class="secondary-button bookmarklet-link" id="refreshBookmarkletLink" href="#">Perbarui Semua Cepat</a>
           <a class="secondary-button bookmarklet-link" id="watchBookmarkletLink" href="#">Pantau Otomatis</a>
           <a class="secondary-button bookmarklet-link" id="fullBookmarkletLink" href="#">Sinkron Lengkap</a>
+          <a class="secondary-button bookmarklet-link" id="vehicleDetailBatchBookmarkletLink" href="#">Tarik Detail Otomatis</a>
+          <a class="secondary-button bookmarklet-link" id="vehicleDetailBookmarkletLink" href="#">Simpan Detail Status SIAPP</a>
         </div>
 
         <div class="helper-steps">
@@ -100,6 +109,10 @@
             <span>3</span>
             <strong>Pilih bulan dan tahun lalu klik Sinkron Periode untuk riwayat tertentu, misalnya Juli 2025. Perbarui Semua Cepat untuk seluruh periode tersimpan; Sinkron Lengkap hanya untuk pemindaian awal.</strong>
           </div>
+          <div>
+            <span>4</span>
+            <strong>Pilih Target Detail Otomatis, pasang bookmark Tarik Detail Otomatis, lalu klik pada SIAPP yang sudah login. Nopol dibaca dari database aplikasi dan detail kendaraan ditarik dari Status SPOS, NPP, atau NTP tanpa memasukkan nopol satu per satu. Simpan Detail Status SIAPP tetap tersedia untuk satu nopol yang sedang terbuka.</strong>
+          </div>
         </div>
 
         <p class="helper-status" id="helperStatus"></p>
@@ -111,6 +124,6 @@
     <script src="config.js?v=20260910-1235"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="page-navigation.js?v=20260917-1230"></script>
-    <script src="siapp-helper.js?v=20260917-1105"></script>
+    <script src="siapp-helper.js?v=20260930-1545"></script>
   </body>
 </html>

@@ -3,6 +3,7 @@ const WHATSAPP_REMINDERS_STORAGE_KEY = "wajibPajakWhatsappReminders";
 const PRODUCTION_STORAGE_KEY = "wajibPajakProductionRecords";
 const PRODUCTION_SYNC_META_KEY = "wajibPajakProductionLastSyncAt";
 const PRODUCTION_SUMMARY_STORAGE_KEY = "wajibPajakProductionSummary";
+const VEHICLE_DETAIL_CACHE_KEY = "wajibPajakVehicleDetails";
 const PENDING_UPSERT_STORAGE_KEY = "wajibPajakPendingRemoteUpserts";
 const PENDING_DELETE_STORAGE_KEY = "wajibPajakPendingRemoteDeletes";
 const PENDING_WHATSAPP_REMINDER_DELETE_STORAGE_KEY = "wajibPajakPendingWhatsappReminderDeletes";
@@ -129,6 +130,7 @@ let productionRecords = loadProductionRecords().map(normalizeProductionRecord);
 let productionRecordsByPlate = createProductionIndex(productionRecords);
 let productionLastSyncAt = loadProductionLastSyncAt();
 let productionSummarySnapshot = loadProductionSummarySnapshot();
+let vehicleDetailsByPlate = loadVehicleDetails();
 let pendingRemoteUpserts = loadPendingRemoteUpserts().map(normalizeRecord);
 let pendingRemoteDeletes = loadPendingRemoteDeletes();
 let pendingWhatsappReminderDeletes = loadPendingWhatsappReminderDeletes();
@@ -152,6 +154,8 @@ let remoteConnectionState = "unknown";
 let activeDetailRecordId = "";
 let hasAttemptedLocalProductionMigration = false;
 let hasAttemptedLocalTaxpayerMigration = false;
+let vehicleDetailsUnavailable = false;
+const vehicleDetailLoadingKeys = new Set();
 
 function getDatabaseConfig() {
   const config = window.APP_CONFIG || {};
@@ -263,6 +267,27 @@ function saveProductionRecords() {
   } catch (error) {
     localStorage.removeItem(PRODUCTION_STORAGE_KEY);
     console.warn("Cache Buku Produksi lokal dilewati karena kapasitas browser penuh.", error);
+  }
+}
+
+function loadVehicleDetails() {
+  try {
+    const source = JSON.parse(localStorage.getItem(VEHICLE_DETAIL_CACHE_KEY)) || {};
+    return Object.keys(source).reduce(function (details, plateKey) {
+      const item = normalizeVehicleDetail(source[plateKey]);
+      if (item.plateKey) details[item.plateKey] = item;
+      return details;
+    }, {});
+  } catch {
+    return {};
+  }
+}
+
+function saveVehicleDetails() {
+  try {
+    localStorage.setItem(VEHICLE_DETAIL_CACHE_KEY, JSON.stringify(vehicleDetailsByPlate));
+  } catch (error) {
+    console.warn("Cache detail kendaraan tidak dapat disimpan.", error);
   }
 }
 
@@ -547,6 +572,36 @@ function fromSupabaseProductionRow(row) {
   });
 }
 
+function normalizeVehicleDetail(detail) {
+  const source = detail || {};
+  const plateNumber = formatPlate(source.plateNumber || source.plate_number || "");
+  return {
+    plateKey: getPlateKey(source.plateKey || source.plate_key || plateNumber),
+    plateNumber: plateNumber,
+    ownerName: cleanOwnerName(source.ownerName || source.owner_name || ""),
+    address: String(source.address || "").trim(),
+    districtVillage: String(source.districtVillage || source.district_village || "").trim(),
+    phone: normalizeWhatsapp(source.phone || ""),
+    vehicleType: String(source.vehicleType || source.vehicle_type || "").trim(),
+    brandModel: String(source.brandModel || source.brand_model || "").trim(),
+    manufactureYearColor: String(source.manufactureYearColor || source.manufacture_year_color || "").trim(),
+    sourceLetterType: coerceLetterType(source.sourceLetterType || source.source_letter_type || ""),
+    kohir: String(source.kohir || "").trim(),
+    taxValidDate: toIsoDate(source.taxValidDate || source.tax_valid_date || ""),
+    stnkValidDate: toIsoDate(source.stnkValidDate || source.stnk_valid_date || ""),
+    letterDate: toIsoDate(source.letterDate || source.letter_date || source.ntpDate || source.ntp_date || ""),
+    ntpDate: toIsoDate(source.ntpDate || source.ntp_date || ""),
+    pkbAmount: getNominalNumber(source.pkbAmount || source.pkb_amount || 0),
+    opsenAmount: getNominalNumber(source.opsenAmount || source.opsen_amount || 0),
+    totalAmount: getNominalNumber(source.totalAmount || source.total_amount || 0),
+    updatedAt: String(source.updatedAt || source.updated_at || "")
+  };
+}
+
+function fromSupabaseVehicleDetailRow(row) {
+  return normalizeVehicleDetail(row);
+}
+
 function toSupabaseFieldVisitAssignmentRow(assignment) {
   return {
     id: assignment.id,
@@ -613,6 +668,12 @@ async function requestSupabaseDatabase(action, payload) {
   }
   if (action === "listProduction") {
     return { ok: true, productionRecords: await listSupabaseRows("production_records", fromSupabaseProductionRow) };
+  }
+  if (action === "vehicleDetail") {
+    const plateKey = getPlateKey(payload.plateKey || payload.plateNumber || "");
+    if (!plateKey) return { ok: true, vehicleDetail: null };
+    const rows = await requestSupabaseRest("vehicle_details?select=*&plate_key=eq." + encodeURIComponent(plateKey) + "&limit=1");
+    return { ok: true, vehicleDetail: rows[0] ? fromSupabaseVehicleDetailRow(rows[0]) : null };
   }
   if (action === "productionSummary") {
     const rows = await requestSupabaseRest("production_summary?select=*");
@@ -848,6 +909,12 @@ async function deleteRemoteRecords(ids) {
 async function fetchRemoteProductionRecords() {
   const result = await requestDatabase("listProduction");
   return Array.isArray(result.productionRecords) ? result.productionRecords.map(normalizeProductionRecord) : [];
+}
+
+async function fetchRemoteVehicleDetail(plateNumber) {
+  if (!isSupabaseDatabase()) return null;
+  const result = await requestDatabase("vehicleDetail", { plateKey: getPlateKey(plateNumber) });
+  return result && result.vehicleDetail ? normalizeVehicleDetail(result.vehicleDetail) : null;
 }
 
 async function saveFieldVisitAssignment(record) {
@@ -2866,6 +2933,102 @@ function createSiappStatusDisplay(record) {
   return wrapper;
 }
 
+function getVehicleDetail(record) {
+  const plateKey = getPlateKey(record && record.plateNumber);
+  return plateKey && vehicleDetailsByPlate[plateKey] ? vehicleDetailsByPlate[plateKey] : null;
+}
+
+function loadVehicleDetailForRecord(record) {
+  const plateKey = getPlateKey(record && record.plateNumber);
+  if (!plateKey || !isSupabaseDatabase() || vehicleDetailsUnavailable) return;
+  if (Object.prototype.hasOwnProperty.call(vehicleDetailsByPlate, plateKey) && !vehicleDetailsByPlate[plateKey]) {
+    delete vehicleDetailsByPlate[plateKey];
+    saveVehicleDetails();
+  }
+  if (vehicleDetailsByPlate[plateKey] || vehicleDetailLoadingKeys.has(plateKey)) return;
+
+  vehicleDetailLoadingKeys.add(plateKey);
+  fetchRemoteVehicleDetail(plateKey).then(function (detail) {
+    if (detail) vehicleDetailsByPlate[plateKey] = detail;
+    else delete vehicleDetailsByPlate[plateKey];
+    saveVehicleDetails();
+    if (activeDetailRecordId === record.id && controls.detailOverlay && !controls.detailOverlay.hidden) {
+      renderRecordDetail(record);
+    }
+  }).catch(function (error) {
+    console.warn("Detail kendaraan SIAPP belum tersedia.", error);
+    vehicleDetailsUnavailable = true;
+    if (activeDetailRecordId === record.id && controls.detailOverlay && !controls.detailOverlay.hidden) {
+      renderRecordDetail(record);
+    }
+  }).finally(function () {
+    vehicleDetailLoadingKeys.delete(plateKey);
+  });
+}
+
+function createVehicleDetailSection(record) {
+  const section = document.createElement("section");
+  section.className = "detail-section vehicle-detail-section";
+  const title = document.createElement("h3");
+  title.textContent = "Detail Kendaraan SIAPP";
+  section.append(title);
+
+  const plateKey = getPlateKey(record && record.plateNumber);
+  const hasCachedDetail = Object.prototype.hasOwnProperty.call(vehicleDetailsByPlate, plateKey);
+  const detail = getVehicleDetail(record);
+
+  if (!isSupabaseDatabase()) {
+    const note = document.createElement("p");
+    note.className = "detail-note";
+    note.textContent = "Detail kendaraan SIAPP tersimpan bila aplikasi memakai Supabase.";
+    section.append(note);
+    return section;
+  }
+
+  if (vehicleDetailsUnavailable) {
+    const note = document.createElement("p");
+    note.className = "detail-note";
+    note.textContent = "Database detail kendaraan SIAPP belum aktif. Jalankan file migrasi Supabase terlebih dahulu.";
+    section.append(note);
+    return section;
+  }
+
+  if (!hasCachedDetail && vehicleDetailLoadingKeys.has(plateKey)) {
+    const note = document.createElement("p");
+    note.className = "detail-note";
+    note.textContent = "Memuat detail kendaraan dari database...";
+    section.append(note);
+    return section;
+  }
+
+  if (!detail) {
+    const note = document.createElement("p");
+    note.className = "detail-note";
+    note.textContent = "Belum ada detail kendaraan SIAPP tersimpan untuk nopol ini. Jalankan bookmark Tarik Detail Otomatis pada SIAPP.";
+    section.append(note);
+    return section;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "detail-grid";
+  grid.append(
+    createDetailItem("Jenis Kendaraan", detail.vehicleType || "-"),
+    createDetailItem("No HP SIAPP", detail.phone || "-"),
+    createDetailItem("Merk / Tipe", detail.brandModel || "-"),
+    createDetailItem("Tahun / Warna", detail.manufactureYearColor || "-"),
+    createDetailItem("Sumber Status", detail.sourceLetterType || "-"),
+    createDetailItem("Kohir", detail.kohir || "-"),
+    createDetailItem("Masa Laku", formatDate(detail.taxValidDate)),
+    createDetailItem("Masa STNK", formatDate(detail.stnkValidDate)),
+    createDetailItem("Tanggal Status", formatDate(detail.letterDate)),
+    createDetailItem("PKB", formatCurrency(detail.pkbAmount)),
+    createDetailItem("Opsen", formatCurrency(detail.opsenAmount)),
+    createDetailItem("Jumlah", formatCurrency(detail.totalAmount))
+  );
+  section.append(grid);
+  return section;
+}
+
 function renderRecordDetail(record) {
   if (!controls.detailContent) return;
 
@@ -2925,6 +3088,7 @@ function renderRecordDetail(record) {
   followUpSection.append(followUpTitle, followUpPlan);
 
   const whatsappReminderSection = createWhatsappReminderSection(record);
+  const vehicleDetailSection = createVehicleDetailSection(record);
 
   const actions = document.createElement("div");
   actions.className = "detail-actions";
@@ -2986,7 +3150,7 @@ function renderRecordDetail(record) {
   });
 
   actions.append(whatsappButton, reminderButton, resetReminderButton, editButton, deleteButton);
-  controls.detailContent.append(summaryBlock, detailGrid, followUpSection, whatsappReminderSection, actions);
+  controls.detailContent.append(summaryBlock, detailGrid, vehicleDetailSection, followUpSection, whatsappReminderSection, actions);
 }
 
 function openRecordDetail(id) {
@@ -2997,6 +3161,7 @@ function openRecordDetail(id) {
 
   activeDetailRecordId = id;
   renderRecordDetail(record);
+  loadVehicleDetailForRecord(record);
   controls.detailOverlay.hidden = false;
   const detailPanel = controls.detailOverlay.querySelector(".detail-panel");
   if (detailPanel) detailPanel.scrollTop = 0;

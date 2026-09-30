@@ -40,6 +40,28 @@ create table if not exists public.production_records (
   unique (letter_type, year, month, plate_key)
 );
 
+create table if not exists public.vehicle_details (
+  plate_key text primary key,
+  plate_number text not null,
+  owner_name text not null default '',
+  address text not null default '',
+  district_village text not null default '',
+  phone text not null default '',
+  vehicle_type text not null default '',
+  brand_model text not null default '',
+  manufacture_year_color text not null default '',
+  source_letter_type text not null default '',
+  kohir text not null default '',
+  tax_valid_date date,
+  stnk_valid_date date,
+  letter_date date,
+  ntp_date date,
+  pkb_amount numeric not null default 0,
+  opsen_amount numeric not null default 0,
+  total_amount numeric not null default 0,
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.field_visit_assignments (
   id text primary key,
   taxpayer_id text not null references public.taxpayers(id) on delete cascade,
@@ -70,6 +92,7 @@ create table if not exists public.whatsapp_reminders (
 create index if not exists taxpayers_updated_at_idx on public.taxpayers (updated_at desc);
 create index if not exists production_records_plate_key_idx on public.production_records (plate_key);
 create index if not exists production_records_updated_at_idx on public.production_records (updated_at desc);
+create index if not exists vehicle_details_updated_at_idx on public.vehicle_details (updated_at desc);
 create index if not exists field_visit_assignments_plate_key_idx on public.field_visit_assignments (plate_key);
 create index if not exists field_visit_assignments_production_record_id_idx on public.field_visit_assignments (production_record_id);
 create index if not exists whatsapp_reminders_plate_key_sent_at_idx on public.whatsapp_reminders (plate_key, sent_at desc);
@@ -94,6 +117,11 @@ create trigger production_records_set_updated_at
 before insert or update on public.production_records
 for each row execute function public.set_updated_at();
 
+drop trigger if exists vehicle_details_set_updated_at on public.vehicle_details;
+create trigger vehicle_details_set_updated_at
+before insert or update on public.vehicle_details
+for each row execute function public.set_updated_at();
+
 drop trigger if exists field_visit_assignments_set_updated_at on public.field_visit_assignments;
 create trigger field_visit_assignments_set_updated_at
 before insert or update on public.field_visit_assignments
@@ -101,6 +129,7 @@ for each row execute function public.set_updated_at();
 
 alter table public.taxpayers enable row level security;
 alter table public.production_records enable row level security;
+alter table public.vehicle_details enable row level security;
 alter table public.field_visit_assignments enable row level security;
 alter table public.whatsapp_reminders enable row level security;
 
@@ -122,6 +151,14 @@ drop policy if exists production_sync_update on public.production_records;
 drop policy if exists production_public_access on public.production_records;
 create policy production_public_access
 on public.production_records
+for all
+to anon
+using (true)
+with check (true);
+
+drop policy if exists vehicle_details_public_access on public.vehicle_details;
+create policy vehicle_details_public_access
+on public.vehicle_details
 for all
 to anon
 using (true)
